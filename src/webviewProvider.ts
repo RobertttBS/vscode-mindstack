@@ -31,7 +31,16 @@ export class StoryboardProvider implements vscode.WebviewViewProvider {
 
         webviewView.webview.onDidReceiveMessage((msg: WebviewToExtensionMessage) => {
             if (msg.command === 'ready') {
-                // Sync existing traces when webview first loads
+                // Restore active group before syncing traces so the
+                // webview drills into the correct level on reload.
+                const activeId = this.traceManager.getActiveGroupId();
+                if (activeId !== null) {
+                    this.postMessage({
+                        type: 'setActiveGroup',
+                        id: activeId,
+                        depth: this.traceManager.getActiveDepth(),
+                    });
+                }
                 this.postMessage({ type: 'syncAll', payload: this.traceManager.getAll() });
             } else {
                 this.onMessage(msg);

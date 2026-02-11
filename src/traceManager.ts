@@ -5,13 +5,13 @@ const MAX_DEPTH = 3;
 
 /**
  * Manages the collection of TracePoints as a tree (up to 3 levels deep).
- * Persists state to workspaceState to survive accidental reloads.
- * `activeGroupId` tracks the current insertion point (not persisted).
+ * Persists both traces and activeGroupId to workspaceState to survive reloads.
  */
 export class TraceManager {
     private traces: TracePoint[] = [];
     private activeGroupId: string | null = null;
     private readonly storageKey = 'mindstack.traces';
+    private readonly activeGroupKey = 'mindstack.activeGroupId';
 
     constructor(private context: vscode.ExtensionContext) {
         this.restore();
@@ -19,17 +19,29 @@ export class TraceManager {
 
     // ── Persistence ──────────────────────────────────────────────
 
-    /** Restore traces from workspaceState */
+    /** Restore traces and activeGroupId from workspaceState */
     private restore(): void {
         const saved = this.context.workspaceState.get<TracePoint[]>(this.storageKey);
         if (saved && Array.isArray(saved)) {
             this.traces = saved;
+        }
+        // Restore activeGroupId — validate it still exists in the tree
+        const savedGroupId = this.context.workspaceState.get<string | null>(this.activeGroupKey);
+        if (savedGroupId && this.findTraceById(savedGroupId)) {
+            this.activeGroupId = savedGroupId;
+        } else {
+            this.activeGroupId = null;
         }
     }
 
     /** Persist current traces to workspaceState */
     private persist(): void {
         this.context.workspaceState.update(this.storageKey, this.traces);
+    }
+
+    /** Persist activeGroupId to workspaceState */
+    private persistActiveGroup(): void {
+        this.context.workspaceState.update(this.activeGroupKey, this.activeGroupId);
     }
 
     // ── Tree helpers ─────────────────────────────────────────────
@@ -99,6 +111,7 @@ export class TraceManager {
         // If removing the active group itself, reset to root
         if (id === this.activeGroupId) {
             this.activeGroupId = null;
+            this.persistActiveGroup();
         }
         this.removeFromTree(id, this.traces);
         this.persist();
@@ -138,6 +151,7 @@ export class TraceManager {
         this.traces = [];
         this.activeGroupId = null;
         this.persist();
+        this.persistActiveGroup();
     }
 
     // ── Public: Navigation ───────────────────────────────────────
@@ -151,6 +165,7 @@ export class TraceManager {
         // Ensure children array exists
         if (!trace.children) { trace.children = []; }
         this.activeGroupId = id;
+        this.persistActiveGroup();
         return true;
     }
 
@@ -161,6 +176,7 @@ export class TraceManager {
         // Walk the tree to find which trace's children array holds activeGroupId
         const parentId = this.findParentTraceId(this.activeGroupId);
         this.activeGroupId = parentId;
+        this.persistActiveGroup();
         return this.activeGroupId;
     }
 
@@ -202,6 +218,7 @@ export class TraceManager {
         if (!group) {
             // Stale id — reset
             this.activeGroupId = null;
+            this.persistActiveGroup();
             return this.traces;
         }
         if (!group.children) { group.children = []; }

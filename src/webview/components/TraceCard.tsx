@@ -96,6 +96,15 @@ const TraceCard: React.FC<TraceCardProps> = ({ trace, index, onUpdateNote, onRem
                 <span className="card-index">{index + 1}</span>
                 <span className="card-file">{fileName}</span>
                 <span className="card-line">L{trace.lineRange[0] + 1}–{trace.lineRange[1] + 1}</span>
+                {showEnterGroup && (
+                    <button
+                        className="enter-group-btn"
+                        title={trace.children?.length ? 'View child traces' : 'Add child traces'}
+                        onClick={(e) => { e.stopPropagation(); onEnterGroup(trace.id); }}
+                    >
+                        {trace.children?.length ? 'View Childs ›' : 'Add Childs +'}
+                    </button>
+                )}
                 <button
                     className="card-remove"
                     title="Remove trace"
@@ -145,17 +154,7 @@ const TraceCard: React.FC<TraceCardProps> = ({ trace, index, onUpdateNote, onRem
                     </div>
                 )}
             </div>
-            {/* Enter group */}
-            {showEnterGroup && (
-                <div className="card-group">
-                    <button
-                        className="enter-group-btn"
-                        onClick={(e) => { e.stopPropagation(); onEnterGroup(trace.id); }}
-                    >
-                        {trace.children?.length ? 'View Childs ›' : 'Add Childs +'}
-                    </button>
-                </div>
-            )}
+
         </div>
     );
 };
