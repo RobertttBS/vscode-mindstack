@@ -23,6 +23,8 @@ const webviewConfig = {
     platform: 'browser',
     target: 'es2020',
     sourcemap: true,
+    minify: true,
+    treeShaking: true,
     define: {
         'process.env.NODE_ENV': '"production"',
     },

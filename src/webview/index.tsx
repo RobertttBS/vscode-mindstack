@@ -186,7 +186,7 @@ style.textContent = `
 }
 
 /* ---- Reverse-sync flash ---- */
-.highlight-flash > div > .trace-card {
+.highlight-flash .trace-card {
     animation: flash-border 1s ease;
 }
 @keyframes flash-border {

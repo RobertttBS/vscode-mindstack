@@ -103,6 +103,21 @@ export function activate(context: vscode.ExtensionContext) {
         }),
     );
 
+    // Re-apply decorations after edits so VS Code's automatic range expansion
+    // doesn't leak gutter icons / highlights to newly typed lines.
+    let decorationDebounce: ReturnType<typeof setTimeout> | undefined;
+    context.subscriptions.push(
+        vscode.workspace.onDidChangeTextDocument((event) => {
+            const editor = vscode.window.activeTextEditor;
+            if (editor && editor.document === event.document) {
+                if (decorationDebounce) { clearTimeout(decorationDebounce); }
+                decorationDebounce = setTimeout(() => {
+                    updateDecorations(editor, traceManager.getAll());
+                }, 100);
+            }
+        }),
+    );
+
     // --- Reverse sync: cursor position → sidebar card ---
     let lastFocusedTraceId: string | undefined;
     let debounceTimer: ReturnType<typeof setTimeout> | undefined;

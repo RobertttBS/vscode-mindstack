@@ -1,7 +1,26 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import { postMessage } from '../utils/messaging';
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import SyntaxHighlighter from 'react-syntax-highlighter/dist/esm/prism-light';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+
+// Register only the languages we actually need (instead of bundling all ~300)
+import tsx from 'refractor/lang/tsx';
+import typescript from 'refractor/lang/typescript';
+import javascript from 'refractor/lang/javascript';
+import python from 'refractor/lang/python';
+import json from 'refractor/lang/json';
+import bash from 'refractor/lang/bash';
+import css from 'refractor/lang/css';
+import markdown from 'refractor/lang/markdown';
+
+SyntaxHighlighter.registerLanguage('tsx', tsx);
+SyntaxHighlighter.registerLanguage('typescript', typescript);
+SyntaxHighlighter.registerLanguage('javascript', javascript);
+SyntaxHighlighter.registerLanguage('python', python);
+SyntaxHighlighter.registerLanguage('json', json);
+SyntaxHighlighter.registerLanguage('bash', bash);
+SyntaxHighlighter.registerLanguage('css', css);
+SyntaxHighlighter.registerLanguage('markdown', markdown);
 
 interface TracePoint {
     id: string;
@@ -127,4 +146,4 @@ const TraceCard: React.FC<TraceCardProps> = ({ trace, index, onUpdateNote, onRem
     );
 };
 
-export default TraceCard;
+export default React.memo(TraceCard);

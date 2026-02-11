@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
     DndContext,
     closestCenter,
@@ -27,13 +27,66 @@ interface TracePoint {
     timestamp: number;
 }
 
+/**
+ * Defers rendering of children until the element scrolls into the viewport.
+ * Shows a lightweight placeholder to preserve layout space.
+ */
+const LazyRender: React.FC<{ height?: number; forceVisible?: boolean; children: React.ReactNode }> = ({
+    height = 120,
+    forceVisible = false,
+    children,
+}) => {
+    const ref = useRef<HTMLDivElement>(null);
+    const [visible, setVisible] = useState(false);
+
+    useEffect(() => {
+        if (forceVisible) {
+            setVisible(true);
+            return;
+        }
+        const el = ref.current;
+        if (!el) { return; }
+
+        const observer = new IntersectionObserver(
+            ([entry]) => {
+                if (entry.isIntersecting) {
+                    setVisible(true);
+                    observer.disconnect();
+                }
+            },
+            { rootMargin: '200px' }, // pre-load slightly before visible
+        );
+        observer.observe(el);
+        return () => observer.disconnect();
+    }, [forceVisible]);
+
+    if (!visible) {
+        return (
+            <div
+                ref={ref}
+                style={{
+                    minHeight: height,
+                    background: 'var(--vscode-editor-background, #1e1e1e)',
+                    borderRadius: 6,
+                    marginBottom: 12,
+                    border: '1px solid var(--vscode-panel-border, #333)',
+                    opacity: 0.4,
+                }}
+            />
+        );
+    }
+
+    return <>{children}</>;
+};
+
 /** Wrapper that makes a TraceCard sortable via dnd-kit */
 const SortableTraceCard: React.FC<{
     trace: TracePoint;
     index: number;
+    focusedId?: string;
     onUpdateNote: (id: string, note: string) => void;
     onRemove: (id: string) => void;
-}> = ({ trace, index, onUpdateNote, onRemove }) => {
+}> = ({ trace, index, focusedId, onUpdateNote, onRemove }) => {
     const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
         id: trace.id,
     });
@@ -47,18 +100,21 @@ const SortableTraceCard: React.FC<{
 
     return (
         <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
-            <TraceCard
-                trace={trace}
-                index={index}
-                onUpdateNote={onUpdateNote}
-                onRemove={onRemove}
-            />
+            <LazyRender forceVisible={focusedId === trace.id}>
+                <TraceCard
+                    trace={trace}
+                    index={index}
+                    onUpdateNote={onUpdateNote}
+                    onRemove={onRemove}
+                />
+            </LazyRender>
         </div>
     );
 };
 
 const Storyboard: React.FC = () => {
     const [traces, setTraces] = useState<TracePoint[]>([]);
+    const [focusedId, setFocusedId] = useState<string | undefined>();
 
     const sensors = useSensors(
         useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -81,12 +137,16 @@ const Storyboard: React.FC = () => {
                     break;
                 case 'focusCard': {
                     const cardId = (message as { type: string; id: string }).id;
-                    const el = document.getElementById(`trace-card-${cardId}`);
-                    if (el) {
-                        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                        el.classList.add('highlight-flash');
-                        setTimeout(() => el.classList.remove('highlight-flash'), 1000);
-                    }
+                    // Force the lazy card to mount, then scroll & flash after render
+                    setFocusedId(cardId);
+                    setTimeout(() => {
+                        const el = document.getElementById(`trace-card-${cardId}`);
+                        if (el) {
+                            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            el.classList.add('highlight-flash');
+                            setTimeout(() => el.classList.remove('highlight-flash'), 1000);
+                        }
+                    }, 50); // small delay to allow React to mount the card
                     break;
                 }
             }
@@ -151,6 +211,7 @@ const Storyboard: React.FC = () => {
                             <SortableTraceCard
                                 trace={trace}
                                 index={index}
+                                focusedId={focusedId}
                                 onUpdateNote={handleUpdateNote}
                                 onRemove={handleRemove}
                             />
