@@ -48,9 +48,20 @@ export function activate(context: vscode.ExtensionContext) {
                     refreshDecorations();
                     break;
                 case 'exitGroup': {
+                    const exitedGroupId = traceManager.getActiveGroupId();
+                    const exitedGroup = exitedGroupId ? traceManager.findTraceById(exitedGroupId) : undefined;
                     const newGroupId = traceManager.exitGroup();
                     provider.postMessage({ type: 'setActiveGroup', id: newGroupId, depth: traceManager.getActiveDepth() });
                     provider.postMessage({ type: 'syncAll', payload: traceManager.getAll() });
+                    if (exitedGroupId) {
+                        // Defer so the webview re-renders with the parent view first
+                        setTimeout(() => {
+                            provider.postMessage({ type: 'focusCard', id: exitedGroupId });
+                        }, 100);
+                    }
+                    if (exitedGroup) {
+                        handleJump({ filePath: exitedGroup.filePath, range: exitedGroup.lineRange });
+                    }
                     refreshDecorations();
                     break;
                 }

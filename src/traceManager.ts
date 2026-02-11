@@ -35,11 +35,11 @@ export class TraceManager {
     // ── Tree helpers ─────────────────────────────────────────────
 
     /** Recursively find a trace by id */
-    private findTrace(id: string, list: TracePoint[] = this.traces): TracePoint | undefined {
+    findTraceById(id: string, list: TracePoint[] = this.traces): TracePoint | undefined {
         for (const t of list) {
             if (t.id === id) { return t; }
             if (t.children?.length) {
-                const found = this.findTrace(id, t.children);
+                const found = this.findTraceById(id, t.children);
                 if (found) { return found; }
             }
         }
@@ -121,7 +121,7 @@ export class TraceManager {
 
     /** Update the note of a trace (recursive search) */
     updateNote(id: string, note: string): void {
-        const trace = this.findTrace(id);
+        const trace = this.findTraceById(id);
         if (trace) {
             trace.note = note;
             this.persist();
@@ -146,7 +146,7 @@ export class TraceManager {
     enterGroup(id: string): boolean {
         const depth = this.getDepth(id);
         if (depth < 0 || depth >= MAX_DEPTH - 1) { return false; }
-        const trace = this.findTrace(id);
+        const trace = this.findTraceById(id);
         if (!trace) { return false; }
         // Ensure children array exists
         if (!trace.children) { trace.children = []; }
@@ -198,7 +198,7 @@ export class TraceManager {
      */
     getActiveChildren(): TracePoint[] {
         if (this.activeGroupId === null) { return this.traces; }
-        const group = this.findTrace(this.activeGroupId);
+        const group = this.findTraceById(this.activeGroupId);
         if (!group) {
             // Stale id — reset
             this.activeGroupId = null;
