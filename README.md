@@ -48,6 +48,14 @@ Or press `F5` in VS Code to launch the Extension Development Host.
 npm run watch
 ```
 
+### Build VSIX
+
+To package the extension into a `.vsix` file for installation:
+
+```bash
+npx @vscode/vsce package
+```
+
 ## Project Structure
 
 ```

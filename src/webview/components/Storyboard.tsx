@@ -79,6 +79,16 @@ const Storyboard: React.FC = () => {
                         prev.filter(t => t.id !== (message.payload as { id: string }).id),
                     );
                     break;
+                case 'focusCard': {
+                    const cardId = (message as { type: string; id: string }).id;
+                    const el = document.getElementById(`trace-card-${cardId}`);
+                    if (el) {
+                        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        el.classList.add('highlight-flash');
+                        setTimeout(() => el.classList.remove('highlight-flash'), 1000);
+                    }
+                    break;
+                }
             }
         });
         return unsubscribe;
@@ -137,13 +147,14 @@ const Storyboard: React.FC = () => {
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
                 <SortableContext items={traces.map(t => t.id)} strategy={verticalListSortingStrategy}>
                     {traces.map((trace, index) => (
-                        <SortableTraceCard
-                            key={trace.id}
-                            trace={trace}
-                            index={index}
-                            onUpdateNote={handleUpdateNote}
-                            onRemove={handleRemove}
-                        />
+                        <div key={trace.id} id={`trace-card-${trace.id}`}>
+                            <SortableTraceCard
+                                trace={trace}
+                                index={index}
+                                onUpdateNote={handleUpdateNote}
+                                onRemove={handleRemove}
+                            />
+                        </div>
                     ))}
                 </SortableContext>
             </DndContext>

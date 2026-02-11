@@ -7,7 +7,7 @@ import { ExtensionToWebviewMessage, WebviewToExtensionMessage } from './types';
  */
 export class StoryboardProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'mindstack.storyboard';
-    private view?: vscode.WebviewView;
+    public _view?: vscode.WebviewView;
 
     constructor(
         private readonly extensionUri: vscode.Uri,
@@ -20,7 +20,7 @@ export class StoryboardProvider implements vscode.WebviewViewProvider {
         _context: vscode.WebviewViewResolveContext,
         _token: vscode.CancellationToken,
     ): void {
-        this.view = webviewView;
+        this._view = webviewView;
 
         webviewView.webview.options = {
             enableScripts: true,
@@ -41,7 +41,7 @@ export class StoryboardProvider implements vscode.WebviewViewProvider {
 
     /** Send a message to the webview */
     postMessage(message: ExtensionToWebviewMessage): void {
-        this.view?.webview.postMessage(message);
+        this._view?.webview.postMessage(message);
     }
 
     private getHtml(webview: vscode.Webview): string {
