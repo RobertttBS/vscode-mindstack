@@ -11,7 +11,7 @@ export function initDecorations(context: vscode.ExtensionContext): void {
         gutterIconPath: context.asAbsolutePath(path.join('resources', 'bookmark.svg')),
         gutterIconSize: 'contain',
         isWholeLine: true,
-        backgroundColor: 'rgba(255, 215, 0, 0.03)', // soft gold tint
+        backgroundColor: 'rgba(255, 215, 0, 0.015)', // soft gold tint
     });
 
     fadedDecorationType = vscode.window.createTextEditorDecorationType({

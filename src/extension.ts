@@ -36,6 +36,7 @@ export function activate(context: vscode.ExtensionContext) {
                     break;
                 case 'reorderTraces':
                     traceManager.reorder(msg.orderedIds);
+                    provider.postMessage({ type: 'syncAll', payload: traceManager.getAll() });
                     break;
                 case 'updateNote':
                     traceManager.updateNote(msg.id, msg.note);
