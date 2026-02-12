@@ -211,7 +211,27 @@ const Storyboard: React.FC = () => {
     }, [visibleTraces]);
 
     const handleUpdateNote = useCallback((id: string, note: string) => {
-        setTraces(prev => prev.map(t => (t.id === id ? { ...t, note } : t)));
+        // Recursively update note in the tree so child-level changes
+        // produce new object references along the path → triggers re-render.
+        const updateNoteInTree = (list: TracePoint[]): TracePoint[] => {
+            let changed = false;
+            const result = list.map(t => {
+                if (t.id === id) {
+                    changed = true;
+                    return { ...t, note };
+                }
+                if (t.children?.length) {
+                    const newChildren = updateNoteInTree(t.children);
+                    if (newChildren !== t.children) {
+                        changed = true;
+                        return { ...t, children: newChildren };
+                    }
+                }
+                return t;
+            });
+            return changed ? result : list;
+        };
+        setTraces(prev => updateNoteInTree(prev));
         postMessage({ command: 'updateNote', id, note });
     }, []);
 
