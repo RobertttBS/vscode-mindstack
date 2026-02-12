@@ -18,15 +18,21 @@ export function generateMarkdown(traces: TracePoint[]): string {
 }
 
 function renderTrace(t: TracePoint, index: number, depth: number): string {
-    // Root = ###, child = ####, grandchild = #####
-    const heading = '#'.repeat(depth + 3);
+    // Root = ##, child = ###, grandchild = ####
+    const heading = '#'.repeat(depth + 2);
     const fileName = t.filePath.split('/').pop() ?? t.filePath;
 
-    let md = `${heading} ${index + 1}. ${fileName}:${t.lineRange[0] + 1}\n\n`;
+    const title = t.note ? t.note.split('\n')[0] : `${fileName}:${t.lineRange[0] + 1}`;
+    let md = `${heading} ${index + 1}. ${title}\n\n`;
     if (t.note) {
-        md += `> **Note:** ${t.note}\n\n`;
+        const rest = t.note.split('\n').slice(1).join('\n').trim();
+        if (rest) {
+            md += `${rest}\n\n`;
+        }
     }
-    md += '```' + t.lang + '\n';
+    const startLine = t.lineRange[0] + 1;
+    const endLine = t.lineRange[1] + 1;
+    md += '```' + t.lang + ` ${startLine}:${endLine}:${t.filePath}` + '\n';
     md += t.content + '\n';
     md += '```\n\n';
 
