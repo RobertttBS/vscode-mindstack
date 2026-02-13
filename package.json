@@ -3,6 +3,12 @@
   "displayName": "TraceNotes",
   "description": "Collect code trace points and visualize them in a sidebar storyboard",
   "version": "0.0.1",
+  "publisher": "RobertttBS",
+  "icon": "images/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/RobertttBS/vscode-tracenotes.git"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },
