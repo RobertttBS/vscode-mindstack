@@ -92,7 +92,7 @@ const TraceCard: React.FC<TraceCardProps> = ({ trace, index, onUpdateNote, onRem
         return () => window.removeEventListener('click', closeMenu);
     }, [menuPos]);
 
-    const updateHighlight = useCallback((color: 'red' | 'blue' | 'green' | null) => {
+    const updateHighlight = useCallback((color: 'red' | 'blue' | 'green' | 'orange' | 'purple' | null) => {
         postMessage({
             command: 'updateHighlight',
             id: trace.id,
@@ -186,6 +186,8 @@ const TraceCard: React.FC<TraceCardProps> = ({ trace, index, onUpdateNote, onRem
                     <div className="color-option red" onClick={() => updateHighlight('red')} title="Red Highlight" />
                     <div className="color-option blue" onClick={() => updateHighlight('blue')} title="Blue Highlight" />
                     <div className="color-option green" onClick={() => updateHighlight('green')} title="Green Highlight" />
+                    <div className="color-option orange" onClick={() => updateHighlight('orange')} title="Orange Highlight" />
+                    <div className="color-option purple" onClick={() => updateHighlight('purple')} title="Purple Highlight" />
                     <div className="color-option none" onClick={() => updateHighlight(null)} title="Clear Highlight" />
                 </div>
             )}

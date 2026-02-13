@@ -9,6 +9,8 @@ export let flashDecorationType: vscode.TextEditorDecorationType;
 let redDecorationType: vscode.TextEditorDecorationType;
 let blueDecorationType: vscode.TextEditorDecorationType;
 let greenDecorationType: vscode.TextEditorDecorationType;
+let orangeDecorationType: vscode.TextEditorDecorationType;
+let purpleDecorationType: vscode.TextEditorDecorationType;
 
 /** Generate a data URI for the gutter icon with the specified color */
 function getGutterIconUri(color: string): vscode.Uri {
@@ -26,7 +28,7 @@ export function initDecorations(context: vscode.ExtensionContext): void {
     });
 
     fadedDecorationType = vscode.window.createTextEditorDecorationType({
-        gutterIconPath: getGutterIconUri('#666666'), // dark grey
+        gutterIconPath: getGutterIconUri('#525252ff'), // dark grey
         gutterIconSize: 'contain',
         isWholeLine: true,
         backgroundColor: 'rgba(100, 100, 100, 0.02)', // very subtle grey tint
@@ -59,12 +61,28 @@ export function initDecorations(context: vscode.ExtensionContext): void {
         backgroundColor: 'rgba(58, 217, 0, 0.05)',
     });
 
+    orangeDecorationType = vscode.window.createTextEditorDecorationType({
+        gutterIconPath: getGutterIconUri('#FF8800'),
+        gutterIconSize: 'contain',
+        isWholeLine: true,
+        backgroundColor: 'rgba(255, 136, 0, 0.05)',
+    });
+
+    purpleDecorationType = vscode.window.createTextEditorDecorationType({
+        gutterIconPath: getGutterIconUri('#9D00FF'),
+        gutterIconSize: 'contain',
+        isWholeLine: true,
+        backgroundColor: 'rgba(157, 0, 255, 0.05)',
+    });
+
     context.subscriptions.push(traceDecorationType);
     context.subscriptions.push(fadedDecorationType);
     context.subscriptions.push(flashDecorationType);
     context.subscriptions.push(redDecorationType);
     context.subscriptions.push(blueDecorationType);
     context.subscriptions.push(greenDecorationType);
+    context.subscriptions.push(orangeDecorationType);
+    context.subscriptions.push(purpleDecorationType);
 }
 
 /**
@@ -97,6 +115,8 @@ export function updateDecorations(
     const redActive = relevantActive.filter(t => t.highlight === 'red');
     const blueActive = relevantActive.filter(t => t.highlight === 'blue');
     const greenActive = relevantActive.filter(t => t.highlight === 'green');
+    const orangeActive = relevantActive.filter(t => t.highlight === 'orange');
+    const purpleActive = relevantActive.filter(t => t.highlight === 'purple');
 
     // --- Faded decorations (all other traces) ---
     const relevantFaded = allTraces.filter(
@@ -116,4 +136,6 @@ export function updateDecorations(
     editor.setDecorations(redDecorationType, getDecorationOptions(redActive));
     editor.setDecorations(blueDecorationType, getDecorationOptions(blueActive));
     editor.setDecorations(greenDecorationType, getDecorationOptions(greenActive));
+    editor.setDecorations(orangeDecorationType, getDecorationOptions(orangeActive));
+    editor.setDecorations(purpleDecorationType, getDecorationOptions(purpleActive));
 }

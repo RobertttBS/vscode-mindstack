@@ -290,6 +290,14 @@ style.textContent = `
     border-color: #3AD900;
     box-shadow: 0 0 4px rgba(58, 217, 0, 0.2);
 }
+.trace-card.orange {
+    border-color: #FF8800;
+    box-shadow: 0 0 4px rgba(255, 136, 0, 0.2);
+}
+.trace-card.purple {
+    border-color: #9D00FF;
+    box-shadow: 0 0 4px rgba(157, 0, 255, 0.2);
+}
 
 /* ---- Context Menu ---- */
 .context-menu {
@@ -323,6 +331,8 @@ style.textContent = `
 .color-option.red { background: #F14C4C; }
 .color-option.blue { background: #3794FF; }
 .color-option.green { background: #3AD900; }
+.color-option.orange { background: #FF8800; }
+.color-option.purple { background: #9D00FF; }
 
 .color-option.none {
     background: transparent;

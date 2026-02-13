@@ -8,7 +8,7 @@ export interface TracePoint {
     lang: string;                // language id for syntax highlighting
     note: string;
     timestamp: number;
-    highlight?: 'red' | 'blue' | 'green' | null;
+    highlight?: 'red' | 'blue' | 'green' | 'orange' | 'purple' | null;
     children?: TracePoint[];     // sub-traces (max 3 levels deep)
 }
 
@@ -28,5 +28,5 @@ export type WebviewToExtensionMessage =
     | { command: 'enterGroup'; id: string }
     | { command: 'exitGroup' }
     | { command: 'clearCurrentLevel' }
-    | { command: 'updateHighlight'; id: string; highlight: 'red' | 'blue' | 'green' | null }
+    | { command: 'updateHighlight'; id: string; highlight: 'red' | 'blue' | 'green' | 'orange' | 'purple' | null }
     | { command: 'exportToMarkdown' };

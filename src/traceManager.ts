@@ -140,7 +140,7 @@ export class TraceManager {
     }
 
     /** Update the highlight color of a trace */
-    updateHighlight(id: string, highlight: 'red' | 'blue' | 'green' | null): void {
+    updateHighlight(id: string, highlight: 'red' | 'blue' | 'green' | 'orange' | 'purple' | null): void {
         const trace = this.findTraceById(id);
         if (trace) {
             trace.highlight = highlight;
