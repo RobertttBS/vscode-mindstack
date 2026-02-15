@@ -11,6 +11,12 @@ export class TraceManager {
     private readonly storageKey = 'tracenotes.traces';
     private readonly activeGroupKey = 'tracenotes.activeGroupId';
 
+    // Debounce / Batching
+    private validationDebounceTimer: ReturnType<typeof setTimeout> | undefined;
+    private pendingValidationDocs: Map<string, vscode.TextDocument> = new Map();
+    private _onDidChangeTraces = new vscode.EventEmitter<void>();
+    public readonly onDidChangeTraces = this._onDidChangeTraces.event;
+
     constructor(private context: vscode.ExtensionContext) {
         this.restore();
     }
@@ -202,8 +208,6 @@ export class TraceManager {
     /** Go up one level. Returns the new activeGroupId (null = root). */
     exitGroup(): string | null {
         if (this.activeGroupId === null) { return null; }
-        // Find the parent trace that contains activeGroupId
-        // Walk the tree to find which trace's children array holds activeGroupId
         const parentId = this.findParentTraceId(this.activeGroupId);
         this.activeGroupId = parentId;
         this.persistActiveGroup();
@@ -238,10 +242,6 @@ export class TraceManager {
         return depth >= 0 ? depth + 1 : 0; // +1 because we're inside the trace
     }
 
-    /**
-     * Build a breadcrumb string for the active group, e.g. "1 / 2".
-     * Each segment is the 1-based index of the ancestor trace within its parent list.
-     */
     getActiveBreadcrumb(): string {
         if (this.activeGroupId === null) { return ''; }
         const segments: number[] = [];
@@ -257,20 +257,215 @@ export class TraceManager {
         return segments.join('/') + '/';
     }
 
-    /**
-     * Return the children of the active group (or the root array).
-     * Returns the *actual* backing array — mutations will be persisted.
-     */
     getActiveChildren(): TracePoint[] {
         if (this.activeGroupId === null) { return this.traces; }
         const group = this.findTraceById(this.activeGroupId);
         if (!group) {
-            // Stale id — reset
             this.activeGroupId = null;
             this.persistActiveGroup();
             return this.traces;
         }
         if (!group.children) { group.children = []; }
         return group.children;
+    }
+
+    // ── Synchronization ──────────────────────────────────────────
+
+    /**
+     * Handle text document changes SYNCHRONOUSLY to keep offsets accurate,
+     * but debounce the heavy validation and disk persistence.
+     */
+    handleTextDocumentChange(event: vscode.TextDocumentChangeEvent): void {
+        const document = event.document;
+        const tracesInFile = this.getAllFlat().filter(t => t.filePath === document.uri.fsPath);
+        
+        if (tracesInFile.length === 0) return;
+
+        let needsValidation = false;
+
+        // 1. SYNCHRONOUS OFFSET MATH (Correctly handles bottom-up VS Code changes)
+        for (const change of event.contentChanges) {
+            const changeStart = change.rangeOffset;
+            const changeEnd = changeStart + change.rangeLength;
+            const delta = change.text.length - change.rangeLength;
+
+            for (const trace of tracesInFile) {
+                if (trace.orphaned) continue;
+
+                if (!trace.rangeOffset) { this.ensureOffsets(document, [trace]); }
+                const [start, end] = trace.rangeOffset!;
+
+                if (changeEnd <= start) {
+                    trace.rangeOffset = [start + delta, end + delta];
+                    needsValidation = true;
+                } else if (changeStart >= end) {
+                    continue;
+                } else {
+                    needsValidation = true;
+                    if (changeStart >= start && changeEnd <= end) {
+                        trace.rangeOffset = [start, end + delta];
+                    }
+                }
+            }
+        }
+
+        // 2. QUEUE FOR VALIDATION
+        if (needsValidation) {
+            // Queue the document by its URI string
+            this.pendingValidationDocs.set(document.uri.toString(), document);
+
+            if (this.validationDebounceTimer) {
+                clearTimeout(this.validationDebounceTimer);
+            }
+            this.validationDebounceTimer = setTimeout(() => {
+                this.processValidationQueue();
+            }, 500);
+        }
+    }
+
+    private processValidationQueue(): void {
+        if (this.pendingValidationDocs.size === 0) return;
+
+        // Clone and clear the queue so incoming edits don't interfere
+        const docsToProcess = new Map(this.pendingValidationDocs);
+        this.pendingValidationDocs.clear();
+
+        let stateChanged = false;
+
+        for (const document of docsToProcess.values()) {
+            const tracesInFile = this.getAllFlat().filter(t => t.filePath === document.uri.fsPath);
+            
+            // Re-run your validation logic per document
+            for (const trace of tracesInFile) {
+                if (!trace.rangeOffset) continue;
+
+                const [startOffset, endOffset] = trace.rangeOffset;
+                
+                if (startOffset < 0 || endOffset > document.getText().length) {
+                    trace.orphaned = true;
+                    stateChanged = true;
+                    continue;
+                }
+
+                const startPos = document.positionAt(startOffset);
+                const endPos = document.positionAt(endOffset);
+                trace.lineRange = [startPos.line, endPos.line];
+
+                const currentContent = document.getText(new vscode.Range(startPos, endPos));
+                
+                if (!this.contentMatches(currentContent, trace.content)) {
+                    const recovered = this.recoverTracePoints(document, trace.content, startOffset);
+                    if (recovered) {
+                        trace.rangeOffset = recovered;
+                        const rStart = document.positionAt(recovered[0]);
+                        const rEnd = document.positionAt(recovered[1]);
+                        trace.lineRange = [rStart.line, rEnd.line];
+                        trace.orphaned = false;
+                    } else {
+                        trace.orphaned = true;
+                    }
+                    stateChanged = true;
+                } else if (trace.orphaned) {
+                    trace.orphaned = false;
+                    stateChanged = true;
+                }
+            }
+        }
+
+        if (stateChanged) {
+            this.persist();
+            this._onDidChangeTraces.fire();
+        }
+    }
+
+    /**
+     * Ensure traces have valid rangeOffset. 
+     * Uses lineRange to calculate initial offsets if missing.
+     */
+    private ensureOffsets(document: vscode.TextDocument, traces: TracePoint[]): void {
+        for (const t of traces) {
+            // If rangeOffset is missing (migration) or obviously invalid
+            if (!t.rangeOffset || t.rangeOffset.length !== 2) {
+                if (t.lineRange) {
+                    // Best effort migration
+                    try {
+                        const startLine = t.lineRange[0];
+                        const endLine = t.lineRange[1];
+                        // Validate lines
+                        if (startLine < document.lineCount) {
+                            const startOffset = document.offsetAt(new vscode.Position(startLine, 0));
+                            const endOffsetLine = Math.min(endLine, document.lineCount - 1);
+                            const endLineText = document.lineAt(endOffsetLine).text;
+                            const endOffset = document.offsetAt(new vscode.Position(endOffsetLine, endLineText.length));
+                            t.rangeOffset = [startOffset, endOffset];
+                        } else {
+                            t.rangeOffset = [0, 0];
+                            t.orphaned = true;
+                        }
+                    } catch {
+                        t.rangeOffset = [0, 0];
+                        t.orphaned = true;
+                    }
+                } else {
+                    t.rangeOffset = [0, 0];
+                    t.orphaned = true;
+                }
+            }
+        }
+    }
+
+    /**
+     * Search for content near the expected location.
+     */
+    private recoverTracePoints(document: vscode.TextDocument, storedContent: string, lastKnownStart: number): [number, number] | null {
+        const fullText = document.getText();
+        const normalizedStored = storedContent.replace(/\s+/g, '');
+        
+        // Helper to check match at offset (optimized)
+        // We can't easily jump around with normalized spacing.
+        // So we fallback to standard indexOf on full text? No, spacing issues.
+        // The user suggested: "Remove all spaces and line breaks using a single regular expression"
+        
+        // If we strictly implement "Remove all spaces", we lose the ability to map back to original offsets efficiently
+        // unless we map the whole file. 
+        // Better approach: Use the stored content (dedented) and try to find it in the document.
+        
+        // Let's try to find the exact string first? 
+        // Traces usually preserve formatting.
+        
+        // Implementation:
+        // 1. Proximity search: Look around lastKnownStart using the stored content (raw).
+        // 2. If fail, maybe loose search?
+        
+        const SEARCH_RADIUS = 5000;
+        const searchStart = Math.max(0, lastKnownStart - SEARCH_RADIUS);
+        const searchEnd = Math.min(fullText.length, lastKnownStart + SEARCH_RADIUS + storedContent.length);
+        const searchArea = fullText.slice(searchStart, searchEnd);
+        
+        // Exact match attempt in search area
+        let idx = searchArea.indexOf(storedContent);
+        if (idx >= 0) {
+            const absoluteStart = searchStart + idx;
+            return [absoluteStart, absoluteStart + storedContent.length];
+        }
+
+        // If exact match fails, try whitespace compliant match?
+        // This is expensive. For now, rely on exact match of the block content.
+        // If the user reformatted the code, the trace is likely "broken" in meaning too.
+        
+        // Global search fallback (if it moved far)
+        idx = fullText.indexOf(storedContent);
+        if (idx >= 0) {
+             return [idx, idx + storedContent.length];
+        }
+
+        return null;
+    }
+
+    private contentMatches(docContent: string, storedContent: string): boolean {
+        // Normalize both by collapsing all whitespace to a single space or empty
+        const normDoc = docContent.replace(/\s+/g, ' ').trim();
+        const normStored = storedContent.replace(/\s+/g, ' ').trim();
+        return normDoc === normStored;
     }
 }

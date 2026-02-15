@@ -103,12 +103,26 @@ export function updateDecorations(
     const activeIds = new Set(relevantActive.map(t => t.id));
 
     const getDecorationOptions = (traces: TracePoint[]): vscode.DecorationOptions[] => {
-        return traces.map(trace => ({
-            range: new vscode.Range(trace.lineRange[0], 0, trace.lineRange[1], 0),
-            hoverMessage: new vscode.MarkdownString(
-                `**Note:** ${trace.note || '(No note)'}`,
-            ),
-        }));
+        return traces.map(trace => {
+            let range: vscode.Range;
+            if (trace.rangeOffset) {
+                const startPos = editor.document.positionAt(trace.rangeOffset[0]);
+                const endPos = editor.document.positionAt(trace.rangeOffset[1]);
+                range = new vscode.Range(startPos, endPos);
+            } else if (trace.lineRange) {
+                // Fallback for migration
+                range = new vscode.Range(trace.lineRange[0], 0, trace.lineRange[1], 0);
+            } else {
+                return null;
+            }
+            
+            return {
+                range,
+                hoverMessage: new vscode.MarkdownString(
+                    `**Note:** ${trace.note || '(No note)'}${trace.orphaned ? ' **(Orphaned)**' : ''}`,
+                ),
+            };
+        }).filter(d => d !== null) as vscode.DecorationOptions[];
     };
 
     const defaultActive = relevantActive.filter(t => !t.highlight);
@@ -123,12 +137,25 @@ export function updateDecorations(
         t => t.filePath === currentFilePath && !activeIds.has(t.id),
     );
 
-    const fadedDecorations: vscode.DecorationOptions[] = relevantFaded.map(trace => ({
-        range: new vscode.Range(trace.lineRange[0], 0, trace.lineRange[1], 0),
-        hoverMessage: new vscode.MarkdownString(
-            `*(Other level)* **Note:** ${trace.note || '(No note)'}`,
-        ),
-    }));
+    const fadedDecorations: vscode.DecorationOptions[] = relevantFaded.map(trace => {
+         let range: vscode.Range;
+         if (trace.rangeOffset) {
+             const startPos = editor.document.positionAt(trace.rangeOffset[0]);
+             const endPos = editor.document.positionAt(trace.rangeOffset[1]);
+             range = new vscode.Range(startPos, endPos);
+         } else if (trace.lineRange) {
+             range = new vscode.Range(trace.lineRange[0], 0, trace.lineRange[1], 0);
+         } else {
+             return null;
+         }
+
+         return {
+            range,
+            hoverMessage: new vscode.MarkdownString(
+                `*(Other level)* **Note:** ${trace.note || '(No note)'}${trace.orphaned ? ' **(Orphaned)**' : ''}`,
+            ),
+        };
+    }).filter(d => d !== null) as vscode.DecorationOptions[];
 
     // Apply decorations
     editor.setDecorations(fadedDecorationType, fadedDecorations);

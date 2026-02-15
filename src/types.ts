@@ -3,12 +3,15 @@ export const MAX_DEPTH = 10;
 export interface TracePoint {
     id: string;
     filePath: string;
-    lineRange: [number, number]; // [startLine, endLine]
+    rangeOffset: [number, number]; // [startOffset, endOffset] (absolute)
+    /** @deprecated used for migration only */
+    lineRange?: [number, number]; 
     content: string;             // dedented source code
     lang: string;                // language id for syntax highlighting
     note: string;
     timestamp: number;
     highlight?: 'red' | 'blue' | 'green' | 'orange' | 'purple' | null;
+    orphaned?: boolean;
     children?: TracePoint[];     // sub-traces (max 3 levels deep)
 }
 

@@ -164,6 +164,9 @@ export function activate(context: vscode.ExtensionContext) {
     let decorationDebounce: ReturnType<typeof setTimeout> | undefined;
     context.subscriptions.push(
         vscode.workspace.onDidChangeTextDocument((event) => {
+            // Keep traces in sync with document changes
+            traceManager.handleTextDocumentChange(event);
+
             const editor = vscode.window.activeTextEditor;
             if (editor && editor.document === event.document) {
                 if (decorationDebounce) { clearTimeout(decorationDebounce); }
@@ -187,11 +190,17 @@ export function activate(context: vscode.ExtensionContext) {
                 const currentFilePath = editor.document.uri.fsPath;
 
                 const allTraces = traceManager.getActiveChildren();
-                const matched = allTraces.find(t =>
-                    t.filePath === currentFilePath &&
-                    position.line >= t.lineRange[0] &&
-                    position.line <= t.lineRange[1],
-                );
+                const matched = allTraces.find(t => {
+                    if (t.filePath !== currentFilePath) { return false; }
+                    if (t.rangeOffset) {
+                         const offset = editor.document.offsetAt(position);
+                         return offset >= t.rangeOffset[0] && offset <= t.rangeOffset[1];
+                    }
+                    if (t.lineRange) {
+                        return position.line >= t.lineRange[0] && position.line <= t.lineRange[1];
+                    }
+                    return false;
+                });
 
                 const matchedId = matched?.id;
                 if (matchedId && matchedId !== lastFocusedTraceId) {
@@ -209,6 +218,17 @@ export function activate(context: vscode.ExtensionContext) {
                 }
             }, 150); // 150ms debounce
         }),
+    );
+
+    // Listen for trace changes from validation/updates (UI Sync)
+    context.subscriptions.push(
+        traceManager.onDidChangeTraces(() => {
+            const editor = vscode.window.activeTextEditor;
+            if (editor) {
+                updateDecorations(editor, traceManager.getActiveChildren(), traceManager.getAllFlat());
+            }
+            // If we had a tree view, we'd refresh it here too
+        })
     );
 
     // Dispose all pending timers on deactivation

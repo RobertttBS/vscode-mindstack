@@ -41,6 +41,11 @@ export function collectTrace(editor: vscode.TextEditor): TracePoint | null {
     return {
         id: generateUUID(),
         filePath,
+        rangeOffset: [
+            editor.document.offsetAt(selection.start),
+            editor.document.offsetAt(selection.end)
+        ],
+        // still populate lineRange for basic backward compat if we need it for UI during transition
         lineRange: [selection.start.line, selection.end.line],
         content: cleanContent,
         lang: editor.document.languageId,
