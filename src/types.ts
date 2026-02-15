@@ -28,9 +28,19 @@ export interface TraceTree {
 /** Messages sent from Extension → Webview */
 export type ExtensionToWebviewMessage =
     | { type: 'syncAll'; payload: { treeId: string; treeName: string; traces: TracePoint[] } }
-    | { type: 'focusCard'; id: string }
-    | { type: 'setActiveGroup'; id: string | null; depth: number; breadcrumb: string }
-    | { type: 'syncTreeList'; payload: { id: string; name: string; active: boolean }[] };
+    | { type: 'focusCard'; id: string | null }
+    | {
+        type: 'syncWorkspace';
+        payload: {
+            treeId: string;
+            treeName: string;
+            traces: TracePoint[];
+            activeGroupId: string | null;
+            activeDepth: number;
+            breadcrumb: string;
+            treeList: { id: string; name: string; active: boolean }[];
+        };
+    };
 
 /** Messages sent from Webview → Extension */
 export type WebviewToExtensionMessage =

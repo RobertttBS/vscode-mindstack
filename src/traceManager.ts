@@ -11,7 +11,11 @@ const MAX_REGEX_LENGTH = 2000;
 export class TraceManager {
     private trees: TraceTree[] = [];
     private activeTreeId: string | null = null;
+
     private activeGroupId: string | null = null;
+
+    // Fast-path lookup for handleTextDocumentChange
+    private activeTraceFiles: Set<string> = new Set();
 
     private readonly storageKey = 'tracenotes.traces';
     private readonly activeGroupKey = 'tracenotes.activeGroupId';
@@ -50,6 +54,9 @@ export class TraceManager {
                     traces: saved, // saved is TracePoint[]
                 };
                 this.trees = [defaultTree];
+
+                // Persist immediately to lock in the new schema
+                this.persist();
             }
         } else {
              // Initialize with a default empty tree if nothing exists
@@ -77,6 +84,10 @@ export class TraceManager {
         } else {
             this.activeGroupId = null;
         }
+
+
+        // Initialize the fast-path set based on currently loaded trees
+        this.rebuildActiveTraceFiles();
     }
 
     /** Persist current traces to workspaceState */
@@ -145,6 +156,8 @@ export class TraceManager {
         };
         this.trees.push(newTree);
         this.activeTreeId = newTree.id;
+
+        this.rebuildActiveTraceFiles();
         this.persist();
         this.persistActiveTree();
         this._onDidChangeTraces.fire();
@@ -193,6 +206,8 @@ export class TraceManager {
         }
 
         this.persist();
+
+        this.rebuildActiveTraceFiles();
         this._onDidChangeTraces.fire();
     }
 
@@ -253,6 +268,8 @@ export class TraceManager {
     add(trace: TracePoint): void {
         const target = this.getActiveChildren();
         target.push(trace);
+
+        this.activeTraceFiles.add(trace.filePath);
         this.persist();
     }
 
@@ -264,6 +281,8 @@ export class TraceManager {
             this.persistActiveGroup();
         }
         this.removeFromTree(id, this.getActiveRootTraces());
+
+        this.rebuildActiveTraceFiles(); // File paths might have been removed
         this.persist();
     }
 
@@ -317,6 +336,25 @@ export class TraceManager {
         };
     }
 
+    public getWorkspaceSyncPayload(): {
+        treeId: string;
+        treeName: string;
+        traces: TracePoint[];
+        activeGroupId: string | null;
+        activeDepth: number;
+        breadcrumb: string;
+        treeList: { id: string; name: string; active: boolean }[];
+    } {
+        const basicPayload = this.getSyncPayload();
+        return {
+            ...basicPayload,
+            activeGroupId: this.activeGroupId,
+            activeDepth: this.getActiveDepth(),
+            breadcrumb: this.getActiveBreadcrumb(),
+            treeList: this.getTreeList()
+        };
+    }
+
     /** Recursively collect every TracePoint across all levels into a flat list */
     getAllFlat(list: TracePoint[] = this.getActiveRootTraces()): TracePoint[] {
         const result: TracePoint[] = [];
@@ -336,6 +374,8 @@ export class TraceManager {
             activeTree.traces = [];
         }
         this.activeGroupId = null;
+
+        this.activeTraceFiles.clear();
         this.persist();
         this.persistActiveGroup();
     }
@@ -344,6 +384,9 @@ export class TraceManager {
     clearActiveChildren(): void {
         const children = this.getActiveChildren();
         children.length = 0; // Clear in-place
+
+        // We cleared a subtree. Ideally we just rebuild the set.
+        this.rebuildActiveTraceFiles();
         this.persist();
     }
 
@@ -446,6 +489,11 @@ export class TraceManager {
         // That's bad.
         // 
         // Compromise: Update ALL trees in memory (fast offset math).
+        
+        // Fast-path: If the file is not in our set, return immediately (0ms cost)
+        if (!this.activeTraceFiles.has(document.uri.fsPath)) {
+            return;
+        }
         
         const allTracesAllTrees = this.trees.flatMap(tree => this.getAllFlat(tree.traces));
         const tracesInFile = allTracesAllTrees.filter(t => t.filePath === document.uri.fsPath);
@@ -670,5 +718,23 @@ export class TraceManager {
         const normDoc = docContent.replace(/\s+/g, ' ').trim();
         const normStored = storedContent.replace(/\s+/g, ' ').trim();
         return normDoc === normStored;
+    }
+
+
+    /**
+     * Rebuilds the fast-path Set of file paths that contain traces.
+     * Should be called whenever traces are added, removed, or trees are switched/deleted.
+     */
+    private rebuildActiveTraceFiles(): void {
+        this.activeTraceFiles.clear();
+        // We track files across ALL trees so that we can support background updates if we wanted to,
+        // but primarily to ensure we don't miss updates if the user switches trees.
+        // Actually, for performance, we only care about updating offsets for traces that exist.
+        for (const tree of this.trees) {
+            const flat = this.getAllFlat(tree.traces);
+            for (const t of flat) {
+                this.activeTraceFiles.add(t.filePath);
+            }
+        }
     }
 }

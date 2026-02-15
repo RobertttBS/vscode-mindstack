@@ -123,6 +123,9 @@ const Storyboard: React.FC = () => {
     // Tree Management
     const [viewMode, setViewMode] = useState<'trace' | 'list'>('trace');
     const [treeList, setTreeList] = useState<{ id: string; name: string; active: boolean }[]>([]);
+    
+    // Fix race condition in saveTitle
+    const isEditingRef = useRef(false);
 
     const sensors = useSensors(
         useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -151,14 +154,16 @@ const Storyboard: React.FC = () => {
     useEffect(() => {
         const unsubscribe = onMessage((message) => {
             switch (message.type) {
-                case 'syncAll':
-                    const payload = message.payload as { treeId: string; treeName: string; traces: TracePoint[] };
+                case 'syncWorkspace': {
+                    const payload = message.payload as any; // Type assertion since we might not have full types imported here
                     setTraces(payload.traces);
                     setTreeName(payload.treeName || 'Trace');
+                    setCurrentGroupId(payload.activeGroupId);
+                    setCurrentDepth(payload.activeDepth);
+                    setBreadcrumb(payload.breadcrumb);
+                    setTreeList(payload.treeList);
                     break;
-                case 'syncTreeList':
-                    setTreeList(message.payload as { id: string; name: string; active: boolean }[]);
-                    break;
+                }
                 case 'focusCard': {
                     const cardId = (message as { type: string; id: string | null }).id;
                     setFocusedId(cardId ?? undefined);
@@ -170,13 +175,6 @@ const Storyboard: React.FC = () => {
                             }
                         }, 50);
                     }
-                    break;
-                }
-                case 'setActiveGroup': {
-                    const msg = message as { type: string; id: string | null; depth: number; breadcrumb: string };
-                    setCurrentGroupId(msg.id);
-                    setCurrentDepth(msg.depth);
-                    setBreadcrumb(msg.breadcrumb ?? '');
                     break;
                 }
             }
@@ -258,10 +256,14 @@ const Storyboard: React.FC = () => {
     // Title Editing
     const startEditingTitle = useCallback(() => {
         setTitleInputValue(treeName);
+        isEditingRef.current = true;
         setIsEditingTitle(true);
     }, [treeName]);
 
     const saveTitle = useCallback(() => {
+        if (!isEditingRef.current) return;
+        isEditingRef.current = false;
+
         const newName = titleInputValue.trim();
         if (newName && newName !== treeName) {
             setTreeName(newName);

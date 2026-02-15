@@ -39,7 +39,8 @@ export function activate(context: vscode.ExtensionContext) {
                     break;
                 case 'reorderTraces':
                     traceManager.reorder(msg.orderedIds);
-                    provider.postMessage({ type: 'syncAll', payload: traceManager.getSyncPayload() });
+                    // Reorder doesn't change tree list or active group, but syncWorkspace is safer/easier
+                    provider.postMessage({ type: 'syncWorkspace', payload: traceManager.getWorkspaceSyncPayload() });
                     break;
                 case 'updateNote':
                     traceManager.updateNote(msg.id, msg.note);
@@ -47,21 +48,20 @@ export function activate(context: vscode.ExtensionContext) {
                     break;
                 case 'updateHighlight':
                     traceManager.updateHighlight(msg.id, msg.highlight);
-                    provider.postMessage({ type: 'syncAll', payload: traceManager.getSyncPayload() }); // Sync to webview so it knows the new state
+                    provider.postMessage({ type: 'syncWorkspace', payload: traceManager.getWorkspaceSyncPayload() });
                     refreshDecorations();
                     break;
                 case 'enterGroup':
+
                     traceManager.enterGroup(msg.id);
-                    provider.postMessage({ type: 'setActiveGroup', id: msg.id, depth: traceManager.getActiveDepth(), breadcrumb: traceManager.getActiveBreadcrumb() });
-                    provider.postMessage({ type: 'syncAll', payload: traceManager.getSyncPayload() });
+                    provider.postMessage({ type: 'syncWorkspace', payload: traceManager.getWorkspaceSyncPayload() });
                     refreshDecorations();
                     break;
                 case 'exitGroup': {
                     const exitedGroupId = traceManager.getActiveGroupId();
-                    // const exitedGroup = exitedGroupId ? traceManager.findTraceById(exitedGroupId) : undefined;
-                    const newGroupId = traceManager.exitGroup();
-                    provider.postMessage({ type: 'setActiveGroup', id: newGroupId, depth: traceManager.getActiveDepth(), breadcrumb: traceManager.getActiveBreadcrumb() });
-                    provider.postMessage({ type: 'syncAll', payload: traceManager.getSyncPayload() });
+                    
+                    traceManager.exitGroup();
+                    provider.postMessage({ type: 'syncWorkspace', payload: traceManager.getWorkspaceSyncPayload() });
                     if (exitedGroupId) {
                         // Defer so the webview re-renders with the parent view first
                         if (focusCardTimer) { clearTimeout(focusCardTimer); }
@@ -75,7 +75,7 @@ export function activate(context: vscode.ExtensionContext) {
                 }
                 case 'clearCurrentLevel':
                     traceManager.clearActiveChildren();
-                    provider.postMessage({ type: 'syncAll', payload: traceManager.getSyncPayload() });
+                    provider.postMessage({ type: 'syncWorkspace', payload: traceManager.getWorkspaceSyncPayload() });
                     refreshDecorations();
                     break;
                 case 'exportToMarkdown':
@@ -83,31 +83,23 @@ export function activate(context: vscode.ExtensionContext) {
                     break;
                 case 'renameTree':
                     traceManager.renameActiveTree(msg.name);
-                    provider.postMessage({ type: 'syncAll', payload: traceManager.getSyncPayload() });
-                    provider.postMessage({ type: 'syncTreeList', payload: traceManager.getTreeList() });
+                    provider.postMessage({ type: 'syncWorkspace', payload: traceManager.getWorkspaceSyncPayload() });
                     break;
                 case 'getTreeList':
-                    provider.postMessage({ type: 'syncTreeList', payload: traceManager.getTreeList() });
+                    provider.postMessage({ type: 'syncWorkspace', payload: traceManager.getWorkspaceSyncPayload() });
                     break;
                 case 'createTree':
                     traceManager.createTree(msg.name);
-                    provider.postMessage({ type: 'syncAll', payload: traceManager.getSyncPayload() });
-                    provider.postMessage({ type: 'syncTreeList', payload: traceManager.getTreeList() });
+                    provider.postMessage({ type: 'syncWorkspace', payload: traceManager.getWorkspaceSyncPayload() });
                     break;
                 case 'switchTree':
                     traceManager.switchTree(msg.id);
-                    // Also reset group view in webview
-                    provider.postMessage({ type: 'setActiveGroup', id: null, depth: 0, breadcrumb: '' });
-                    provider.postMessage({ type: 'syncAll', payload: traceManager.getSyncPayload() });
-                    provider.postMessage({ type: 'syncTreeList', payload: traceManager.getTreeList() });
+                    provider.postMessage({ type: 'syncWorkspace', payload: traceManager.getWorkspaceSyncPayload() });
                     refreshDecorations();
                     break;
                 case 'deleteTree':
                     traceManager.deleteTree(msg.id);
-                    // If we deleted the active tree, the manager switched us. Sync everything.
-                    provider.postMessage({ type: 'setActiveGroup', id: null, depth: 0, breadcrumb: '' });
-                    provider.postMessage({ type: 'syncAll', payload: traceManager.getSyncPayload() });
-                    provider.postMessage({ type: 'syncTreeList', payload: traceManager.getTreeList() });
+                    provider.postMessage({ type: 'syncWorkspace', payload: traceManager.getWorkspaceSyncPayload() });
                     refreshDecorations();
                     break;
             }
@@ -137,7 +129,9 @@ export function activate(context: vscode.ExtensionContext) {
                     vscode.commands.executeCommand('tracenotes.storyboard.focus');
                 }
 
-                provider.postMessage({ type: 'syncAll', payload: traceManager.getSyncPayload() });
+
+
+                provider.postMessage({ type: 'syncWorkspace', payload: traceManager.getWorkspaceSyncPayload() });
                 
                 refreshDecorations();
 
@@ -192,7 +186,7 @@ export function activate(context: vscode.ExtensionContext) {
             });
 
             if (uri) {
-                await vscode.workspace.fs.writeFile(uri, Buffer.from(md, 'utf8'));
+                await vscode.workspace.fs.writeFile(uri, new TextEncoder().encode(md));
                 await vscode.window.showTextDocument(uri);
             }
         }),
@@ -202,8 +196,7 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.commands.registerCommand('tracenotes.clearAll', () => {
             traceManager.clear();
-            provider.postMessage({ type: 'setActiveGroup', id: null, depth: 0, breadcrumb: '' });
-            provider.postMessage({ type: 'syncAll', payload: traceManager.getSyncPayload() });
+            provider.postMessage({ type: 'syncWorkspace', payload: traceManager.getWorkspaceSyncPayload() });
             refreshDecorations();
             vscode.window.showInformationMessage('TraceNotes: All traces cleared.');
         }),
@@ -287,7 +280,7 @@ export function activate(context: vscode.ExtensionContext) {
                 updateDecorations(editor, traceManager.getActiveChildren(), traceManager.getAllFlat());
             }
             // Sync with webview
-            provider.postMessage({ type: 'syncAll', payload: traceManager.getSyncPayload() });
+            provider.postMessage({ type: 'syncWorkspace', payload: traceManager.getWorkspaceSyncPayload() });
         })
     );
 
