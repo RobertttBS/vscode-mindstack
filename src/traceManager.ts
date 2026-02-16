@@ -362,6 +362,70 @@ export class TraceManager {
         }
     }
 
+    /** Relocate a trace to a new file/range/content */
+    relocateTrace(id: string, document: vscode.TextDocument, selection: vscode.Selection): void {
+        const trace = this.findTraceById(id);
+        if (!trace) { return; }
+
+        const oldFilePath = trace.filePath;
+        const newFilePath = document.uri.fsPath;
+        const isDifferentFile = oldFilePath !== newFilePath;
+
+        // Smart dedent logic (same as collector)
+        const text = document.getText(selection);
+        const lines = text.split('\n');
+        const minIndent = lines.reduce((min, line) => {
+            if (line.trim().length === 0) { return min; }
+            const match = line.match(/^\s*/);
+            const indent = match ? match[0].length : 0;
+            return indent < min ? indent : min;
+        }, Infinity);
+        const effectiveIndent = minIndent === Infinity ? 0 : minIndent;
+        const cleanContent = lines
+            .map(line => (line.length >= effectiveIndent ? line.slice(effectiveIndent) : line))
+            .join('\n');
+
+        // Update trace fields
+        trace.filePath = newFilePath;
+        trace.rangeOffset = [
+            document.offsetAt(selection.start),
+            document.offsetAt(selection.end)
+        ];
+        trace.lineRange = [selection.start.line, selection.end.line];
+        trace.content = cleanContent;
+        trace.lang = document.languageId;
+        // trace.updatedAt is not on TracePoint
+        trace.orphaned = false;
+
+        // Update Index if file changed
+        if (isDifferentFile) {
+            // Remove from old index
+            const oldIndexList = this.traceIndex.get(oldFilePath);
+            if (oldIndexList) {
+                const idx = oldIndexList.findIndex(t => t.id === id);
+                if (idx !== -1) {
+                    oldIndexList.splice(idx, 1);
+                    if (oldIndexList.length === 0) {
+                        this.traceIndex.delete(oldFilePath);
+                        this.activeTraceFiles.delete(oldFilePath);
+                    }
+                }
+            }
+
+            // Add to new index
+            const newIndexList = this.traceIndex.get(newFilePath) || [];
+            newIndexList.push(trace);
+            this.traceIndex.set(newFilePath, newIndexList);
+            this.activeTraceFiles.add(newFilePath);
+        } else {
+            // Same file: The object reference in the index is the same, so no need to update index list structure,
+            // but we might want to resort if we cared about order in index (we don't strictly require it).
+        }
+
+        this.persist();
+        this._onDidChangeTraces.fire();
+    }
+
     /** Return the full root-level tree (with nested children) */
     getAll(): TracePoint[] {
         return [...this.getActiveRootTraces()];

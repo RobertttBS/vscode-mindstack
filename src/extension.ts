@@ -9,6 +9,14 @@ import { initDecorations, updateDecorations } from './decorationManager';
 export function activate(context: vscode.ExtensionContext) {
     const traceManager = new TraceManager(context);
 
+    // Track the last active text editor to support actions from the webview (which steals focus)
+    let lastActiveEditor: vscode.TextEditor | undefined = vscode.window.activeTextEditor;
+    vscode.window.onDidChangeActiveTextEditor(editor => {
+        if (editor) {
+            lastActiveEditor = editor;
+        }
+    });
+
     // Initialise gutter-icon decoration type
     initDecorations(context);
 
@@ -41,6 +49,20 @@ export function activate(context: vscode.ExtensionContext) {
                 case 'updateNote':
                     traceManager.updateNote(msg.id, msg.note);
                     break;
+                case 'relocateTrace': {
+                    // Use lastActiveEditor if current activeTextEditor is undefined (webview has focus)
+                    const editor = vscode.window.activeTextEditor || lastActiveEditor;
+                    if (!editor) {
+                        vscode.window.showWarningMessage('TraceNotes: open a file to relocate the trace.');
+                        return;
+                    }
+                    if (editor.selection.isEmpty) {
+                        vscode.window.showWarningMessage('TraceNotes: Select some code to relocate the trace.');
+                        return;
+                    }
+                    traceManager.relocateTrace(msg.id, editor.document, editor.selection);
+                    break;
+                }
                 case 'updateHighlight':
                     traceManager.updateHighlight(msg.id, msg.highlight);
                     break;

@@ -56,4 +56,5 @@ export type WebviewToExtensionMessage =
     | { command: 'renameTree'; name: string }
     | { command: 'createTree'; name: string }
     | { command: 'switchTree'; id: string }
-    | { command: 'deleteTree'; id: string };
+    | { command: 'deleteTree'; id: string }
+    | { command: 'relocateTrace'; id: string };

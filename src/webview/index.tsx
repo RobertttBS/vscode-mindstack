@@ -236,9 +236,70 @@ style.textContent = `
     transition: background 0.15s ease, border-color 0.15s ease;
 }
 
+/* ---- Relocation Mode Styles ---- */
+.trace-card.relocating {
+    border-style: dashed !important;
+    border-color: var(--vscode-focusBorder, #007fd4) !important;
+    background: var(--vscode-editor-inactiveSelectionBackground, rgba(58, 61, 65, 0.3));
+}
+
+.relocate-confirm-btn {
+    background: none;
+    border: 1px solid var(--vscode-testing-iconPassed, #73c991);
+    color: var(--vscode-testing-iconPassed, #73c991);
+    font-size: 11px;
+    padding: 1px 4px;
+    border-radius: 3px;
+    cursor: pointer;
+    margin-right: 4px;
+}
+
+.relocate-confirm-btn:hover {
+    background: var(--vscode-testing-iconPassed, #73c991);
+    color: var(--vscode-editor-background, #1e1e1e);
+}
+
+.relocate-cancel-btn {
+    background: none;
+    border: 1px solid var(--vscode-testing-iconFailed, #f14c4c);
+    color: var(--vscode-testing-iconFailed, #f14c4c);
+    font-size: 11px;
+    padding: 1px 4px;
+    border-radius: 3px;
+    cursor: pointer;
+    margin-right: 2px;
+}
+
+.relocate-cancel-btn:hover {
+    background: var(--vscode-testing-iconFailed, #f14c4c);
+    color: var(--vscode-editor-background, #1e1e1e);
+}
+
 .enter-group-btn:hover {
     background: var(--vscode-list-hoverBackground, #2a2d2e);
     border-color: var(--vscode-focusBorder, #007fd4);
+}
+
+/* ---- Relocate button ---- */
+.relocate-btn {
+    background: none;
+    border: 1px solid transparent;
+    color: var(--vscode-foreground);
+    font-size: 11px;
+    padding: 1px 4px;
+    border-radius: 3px;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+    opacity: 0.6;
+    margin-right: 2px;
+}
+
+.relocate-btn:hover {
+    opacity: 1;
+    background: var(--vscode-list-hoverBackground, #2a2d2e);
+    border-color: var(--vscode-panel-border, #555);
+    color: var(--vscode-textLink-foreground, #3794ff);
 }
 
 

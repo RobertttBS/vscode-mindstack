@@ -77,9 +77,10 @@ const SortableTraceCard: React.FC<{
     focusedId?: string;
     onUpdateNote: (id: string, note: string) => void;
     onRemove: (id: string) => void;
+    onRelocate: (id: string) => void;
     onEnterGroup: (id: string) => void;
     showEnterGroup: boolean;
-}> = ({ trace, index, focusedId, onUpdateNote, onRemove, onEnterGroup, showEnterGroup }) => {
+}> = ({ trace, index, focusedId, onUpdateNote, onRemove, onRelocate, onEnterGroup, showEnterGroup }) => {
     const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
         id: trace.id,
     });
@@ -99,6 +100,7 @@ const SortableTraceCard: React.FC<{
                     index={index}
                     onUpdateNote={onUpdateNote}
                     onRemove={onRemove}
+                    onRelocate={onRelocate}
                     onEnterGroup={onEnterGroup}
                     showEnterGroup={showEnterGroup}
                 />
@@ -234,6 +236,10 @@ const Storyboard: React.FC = () => {
 
     const handleRemove = useCallback((id: string) => {
         postMessage({ command: 'removeTrace', id });
+    }, []);
+
+    const handleRelocate = useCallback((id: string) => {
+        postMessage({ command: 'relocateTrace', id });
     }, []);
 
     const handleEnterGroup = useCallback((id: string) => {
@@ -402,6 +408,7 @@ const Storyboard: React.FC = () => {
                                 focusedId={focusedId}
                                 onUpdateNote={handleUpdateNote}
                                 onRemove={handleRemove}
+                                onRelocate={handleRelocate}
                                 onEnterGroup={handleEnterGroup}
                                 showEnterGroup={currentDepth < MAX_DEPTH - 1}
                             />

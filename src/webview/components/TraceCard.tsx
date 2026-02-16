@@ -28,6 +28,7 @@ interface TraceCardProps {
     index: number;
     onUpdateNote: (id: string, note: string) => void;
     onRemove: (id: string) => void;
+    onRelocate: (id: string) => void;
     onEnterGroup: (id: string) => void;
     showEnterGroup: boolean;
 }
@@ -43,8 +44,9 @@ function mapLanguage(lang: string): string {
     return map[lang] || lang;
 }
 
-const TraceCard: React.FC<TraceCardProps> = ({ trace, index, onUpdateNote, onRemove, onEnterGroup, showEnterGroup }) => {
+const TraceCard: React.FC<TraceCardProps> = ({ trace, index, onUpdateNote, onRemove, onRelocate, onEnterGroup, showEnterGroup }) => {
     const [editing, setEditing] = useState(false);
+    const [isRelocating, setIsRelocating] = useState(false);
     const [noteValue, setNoteValue] = useState(trace.note);
 
     const fileName = useMemo(() => {
@@ -104,7 +106,7 @@ const TraceCard: React.FC<TraceCardProps> = ({ trace, index, onUpdateNote, onRem
     return (
         <>
             <div
-                className={`trace-card ${trace.highlight || ''}`}
+                className={`trace-card ${trace.highlight || ''} ${isRelocating ? 'relocating' : ''}`}
                 onContextMenu={handleContextMenu}
             >
                 {/* Connector line */}
@@ -114,7 +116,9 @@ const TraceCard: React.FC<TraceCardProps> = ({ trace, index, onUpdateNote, onRem
                 <div className="card-header" onClick={handleJump} title="Click to jump to code (Right-click for highlight)">
                     <span className="card-index">{index + 1}</span>
                     <span className="card-file">{fileName}</span>
-                    <span className="card-line">L{trace.lineRange[0] + 1}–{trace.lineRange[1] + 1}</span>
+                    <span className="card-line">
+                        {trace.lineRange ? `L${trace.lineRange[0] + 1}–${trace.lineRange[1] + 1}` : 'N/A'}
+                    </span>
                     {showEnterGroup && (
                         <button
                             className="enter-group-btn"
@@ -122,6 +126,42 @@ const TraceCard: React.FC<TraceCardProps> = ({ trace, index, onUpdateNote, onRem
                             onClick={(e) => { e.stopPropagation(); onEnterGroup(trace.id); }}
                         >
                             {trace.children?.length ? `> ${trace.children.length} Childs` : '+ Childs'}
+                        </button>
+                    )}
+                    {isRelocating ? (
+                        <>
+                            <button
+                                className="relocate-confirm-btn"
+                                title="Confirm Relocation (Update with current selection)"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onRelocate(trace.id);
+                                    setIsRelocating(false);
+                                }}
+                            >
+                                ✓
+                            </button>
+                            <button
+                                className="relocate-cancel-btn"
+                                title="Cancel Relocation"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setIsRelocating(false);
+                                }}
+                            >
+                                ✕
+                            </button>
+                        </>
+                    ) : (
+                        <button
+                            className="relocate-btn"
+                            title="Relocate trace (Click then select code)"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setIsRelocating(true);
+                            }}
+                        >
+                            ✎
                         </button>
                     )}
                     <button
