@@ -2,7 +2,7 @@
   "name": "tracenotes",
   "displayName": "TraceNotes",
   "description": "Collect code trace points and visualize them in a sidebar storyboard",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "publisher": "RobertttBS",
   "icon": "images/icon.png",
   "repository": {
