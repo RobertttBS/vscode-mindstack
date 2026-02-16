@@ -84,6 +84,9 @@ export function activate(context: vscode.ExtensionContext) {
                 case 'exportToMarkdown':
                     vscode.commands.executeCommand('tracenotes.exportMarkdown');
                     break;
+                case 'importTrace':
+                    vscode.commands.executeCommand('tracenotes.importTrace');
+                    break;
                 case 'renameTree':
                     traceManager.renameActiveTree(msg.name);
                     break;
@@ -176,6 +179,33 @@ export function activate(context: vscode.ExtensionContext) {
             if (uri) {
                 await vscode.workspace.fs.writeFile(uri, new TextEncoder().encode(md));
                 await vscode.window.showTextDocument(uri);
+            }
+        }),
+    );
+
+    // Command: Import Trace
+    context.subscriptions.push(
+        vscode.commands.registerCommand('tracenotes.importTrace', async () => {
+             const options: vscode.OpenDialogOptions = {
+                canSelectMany: false, // User can only select one file
+                openLabel: 'Import',
+                filters: {
+                   'Markdown Files': ['md'],
+                   'All Files': ['*']
+                }
+            };
+
+            const fileUri = await vscode.window.showOpenDialog(options);
+
+            if (fileUri && fileUri[0]) {
+                try {
+                    const fileData = await vscode.workspace.fs.readFile(fileUri[0]);
+                    const markdown = new TextDecoder().decode(fileData);
+                    await traceManager.importTraceTree(markdown);
+                    vscode.window.showInformationMessage('TraceNotes: Trace tree imported successfully!');
+                } catch (e) {
+                    vscode.window.showErrorMessage(`TraceNotes: Failed to import trace tree. ${e}`);
+                }
             }
         }),
     );

@@ -57,4 +57,5 @@ export type WebviewToExtensionMessage =
     | { command: 'createTree'; name: string }
     | { command: 'switchTree'; id: string }
     | { command: 'deleteTree'; id: string }
-    | { command: 'relocateTrace'; id: string };
+    | { command: 'relocateTrace'; id: string }
+    | { command: 'importTrace' };

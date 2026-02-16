@@ -897,4 +897,204 @@ export class TraceManager {
     public getTracesForFile(filePath: string): TracePoint[] {
         return this.traceIndex.get(filePath) || [];
     }
+
+    // ── Import Logic ─────────────────────────────────────────────
+
+    public async importTraceTree(markdown: string): Promise<void> {
+        try {
+            const importedTraces = await this.parseMarkdown(markdown);
+            
+            // Create a new tree for the imported traces
+            const treeName = `Imported Trace ${new Date().toLocaleString()}`;
+            const newTree: TraceTree = {
+                id: crypto.randomUUID(),
+                name: treeName,
+                createdAt: Date.now(),
+                updatedAt: Date.now(),
+                traces: importedTraces
+            };
+
+            this.trees.push(newTree);
+            this.activeTreeId = newTree.id;
+            this.rebuildTraceIndex();
+            this.persist();
+            this.persistActiveTree();
+            this._onDidChangeTraces.fire();
+        } catch (error) {
+            console.error('Failed to import trace tree:', error);
+            throw error;
+        }
+    }
+
+    private async parseMarkdown(markdown: string): Promise<TracePoint[]> {
+        const lines = markdown.split('\n');
+        const rootTraces: TracePoint[] = [];
+        const stack: { trace: TracePoint, depth: number }[] = [];
+
+        let currentTrace: Partial<TracePoint> | null = null;
+        let currentContent: string[] = [];
+        let capturingContent = false;
+
+        // RegExp to match headers: ## 1. Title (Orphaned)
+        const headerRegex = /^(#+)\s+\d+\.\s+(.*)/;
+        
+        // RegExp to match code block start: ```language startLine:endLine:filePath
+        const codeBlockStartRegex = /^```(\w*)\s+(\d+|\?):(\d+|\?):(.+)$/;
+
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+
+            if (line.startsWith('```') && !capturingContent) {
+                // Check if it's the start of a trace content block
+                const match = line.match(codeBlockStartRegex);
+                if (match && currentTrace) {
+                    capturingContent = true;
+                    currentTrace.lang = match[1];
+                    const startLine = match[2] === '?' ? 0 : parseInt(match[2]) - 1;
+                    const endLine = match[3] === '?' ? 0 : parseInt(match[3]) - 1;
+                    // filePath is match[4], but we might need to validation/normalization
+                    // For now, assume absolute path from export
+                    const filePath = match[4].trim(); 
+                    currentTrace.filePath = filePath;
+                    currentTrace.lineRange = [startLine, endLine];
+                }
+                continue;
+            }
+
+            if (line.startsWith('```') && capturingContent) {
+                capturingContent = false;
+                if (currentTrace) {
+                    currentTrace.content = currentContent.join('\n');
+                    currentContent = [];
+                    
+                    // Finalize current trace
+                    // Validate and Recover!
+                    const validated = await this.validateAndRecover(currentTrace as TracePoint);
+                    if (validated) {
+                        const trace = validated;
+                        
+                        // Determine parent based on depth
+                        // Header depth: # = h1 (File title), ## = h2 (Root trace), ### = h3 (Child)
+                        // In export: Root = ## (depth 0), Child = ### (depth 1)
+                        // currentTrace.depth is derived from header length
+                        // Let's rely on the stack
+                        
+                        // If stack is empty, push to root
+                        while (stack.length > 0 && stack[stack.length - 1].depth >= (currentTrace as any)._tempDepth) {
+                            stack.pop();
+                        }
+                        
+                        if (stack.length > 0) {
+                            const parent = stack[stack.length - 1].trace;
+                            if (!parent.children) parent.children = [];
+                            parent.children.push(trace);
+                        } else {
+                            rootTraces.push(trace);
+                        }
+                        
+                        stack.push({ trace, depth: (currentTrace as any)._tempDepth });
+                    }
+                    
+                    currentTrace = null;
+                }
+                continue;
+            }
+
+            if (capturingContent) {
+                currentContent.push(line);
+                continue;
+            }
+
+            // Check for new trace header
+            const headerMatch = line.match(headerRegex);
+            if (headerMatch) {
+                const hashes = headerMatch[1];
+                const rawTitle = headerMatch[2].trim();
+                
+                // depth 0 is ## (length 2)
+                const depth = hashes.length - 2;
+                if (depth < 0) continue; // Skip document title #
+
+                // Clean title (remove Orphaned tag)
+                let title = rawTitle;
+                let isOrphaned = false;
+                if (title.endsWith('(Orphaned)')) {
+                    title = title.replace('(Orphaned)', '').trim();
+                }
+                // Also check if orphaned was in the note/title in a different way? 
+                // Export format: `${title} ${t.orphaned ? '(Orphaned)' : ''}`
+                
+                currentTrace = {
+                    id: crypto.randomUUID(),
+                    note: title,
+                    orphaned: isOrphaned,
+                    children: [],
+                    _tempDepth: depth // Helper for stack management
+                } as any;
+                
+            } else if (currentTrace && line.trim().length > 0 && !line.trim().startsWith('---')) {
+                // Append to note if it's not a separator
+                 currentTrace.note += '\n' + line;
+            }
+        }
+        
+        return rootTraces;
+    }
+
+    private async validateAndRecover(trace: TracePoint): Promise<TracePoint | null> {
+        try {
+            // Check if file exists
+            try {
+                await vscode.workspace.fs.stat(vscode.Uri.file(trace.filePath));
+            } catch {
+                console.warn('Trace import skipped missing file:', trace.filePath);
+                return null;
+            }
+
+            const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(trace.filePath));
+            
+            // 1. Check exact match at coordinates
+            if (trace.lineRange) {
+                const [startLine, endLine] = trace.lineRange;
+                if (startLine < doc.lineCount) {
+                     const startPos = new vscode.Position(startLine, 0);
+                     const endLineObj = doc.lineAt(Math.min(endLine, doc.lineCount - 1));
+                     const endPos = endLineObj.range.end;
+                     
+                     const text = doc.getText(new vscode.Range(startPos, endPos));
+                     
+                     if (this.contentMatches(text, trace.content)) {
+                         trace.rangeOffset = [doc.offsetAt(startPos), doc.offsetAt(endPos)];
+                         trace.orphaned = false;
+                         return trace;
+                     }
+                }
+            }
+            
+            // 2. Mismatch or invalid coords -> Recover
+            let estimatedOffset = 0;
+            if (trace.lineRange && trace.lineRange[0] < doc.lineCount) {
+                estimatedOffset = doc.offsetAt(new vscode.Position(trace.lineRange[0], 0));
+            }
+
+            const recovered = this.recoverTracePoints(doc, trace.content, estimatedOffset);
+            if (recovered) {
+                trace.rangeOffset = recovered;
+                const rStart = doc.positionAt(recovered[0]);
+                const rEnd = doc.positionAt(recovered[1]);
+                trace.lineRange = [rStart.line, rEnd.line];
+                trace.orphaned = false;
+            } else {
+                // 3. Recovery failed -> Mark as Orphaned
+                trace.orphaned = true;
+                trace.rangeOffset = [0, 0];
+            }
+            
+            return trace;
+
+        } catch (e) {
+            console.warn('Trace import error:', e);
+            return null;
+        }
+    }
 }

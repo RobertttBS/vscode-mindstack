@@ -12,10 +12,11 @@ interface TreeListProps {
     onSelect: (id: string) => void;
     onCreate: (name: string) => void;
     onDelete: (id: string) => void;
+    onImport: () => void;
     onClose: () => void;
 }
 
-export const TreeList: React.FC<TreeListProps> = ({ trees, onSelect, onCreate, onDelete, onClose }) => {
+export const TreeList: React.FC<TreeListProps> = ({ trees, onSelect, onCreate, onDelete, onImport, onClose }) => {
     const [isCreating, setIsCreating] = useState(false);
     const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
     const [newName, setNewName] = useState('');
@@ -95,9 +96,14 @@ export const TreeList: React.FC<TreeListProps> = ({ trees, onSelect, onCreate, o
                     <button className="create-tree-cancel" onClick={() => setIsCreating(false)}>Cancel</button>
                 </div>
             ) : (
-                <button className="create-tree-btn" onClick={() => setIsCreating(true)}>
-                    + New Trace
-                </button>
+                <div style={{ display: 'flex', gap: '8px', padding: '0 12px 12px 12px' }}>
+                    <button className="create-tree-btn" style={{ flex: 1 }} onClick={() => setIsCreating(true)}>
+                        + New Trace
+                    </button>
+                    <button className="create-tree-btn" style={{ flex: 1 }} onClick={onImport}>
+                        Import Traces
+                    </button>
+                </div>
             )}
         </div>
     );

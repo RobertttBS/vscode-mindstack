@@ -28,6 +28,10 @@
         "title": "TraceNotes: Export to Markdown"
       },
       {
+        "command": "tracenotes.importTrace",
+        "title": "TraceNotes: Import from Markdown"
+      },
+      {
         "command": "tracenotes.clearAll",
         "title": "TraceNotes: Clear All Traces"
       }

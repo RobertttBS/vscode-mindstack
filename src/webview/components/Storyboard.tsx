@@ -300,6 +300,11 @@ const Storyboard: React.FC = () => {
         setViewMode('trace');
     }, []);
 
+    const handleImportTrace = useCallback(() => {
+        postMessage({ command: 'importTrace' });
+        setViewMode('trace');
+    }, []);
+
     if (viewMode === 'list') {
         return (
             <TreeList
@@ -307,6 +312,7 @@ const Storyboard: React.FC = () => {
                 onSelect={handleSwitchTree}
                 onCreate={handleCreateTree}
                 onDelete={handleDeleteTree}
+                onImport={handleImportTrace}
                 onClose={() => setViewMode('trace')}
             />
         );
