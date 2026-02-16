@@ -4,7 +4,11 @@
 
 ### Select the code and press **`Opt+C`** or **`Alt+C`** to collect traces; the rest is intuitive.
 
-![demo](./images/demo.png)
+![demo](./images/add_color_reorder.gif)
+
+### Manage Traces: Export and Import
+
+![manage_traces](./images/manage_traces.gif)
 
 ## Features
 
