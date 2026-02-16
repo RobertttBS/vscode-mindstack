@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { TraceManager } from './traceManager';
+import { EditorTracker } from './utils/EditorTracker';
 import { StoryboardProvider } from './webviewProvider';
 import { collectTrace } from './collector';
 import { handleJump } from './decoration';
@@ -9,13 +10,9 @@ import { initDecorations, updateDecorations } from './decorationManager';
 export function activate(context: vscode.ExtensionContext) {
     const traceManager = new TraceManager(context);
 
-    // Track the last active text editor to support actions from the webview (which steals focus)
-    let lastActiveEditor: vscode.TextEditor | undefined = vscode.window.activeTextEditor;
-    vscode.window.onDidChangeActiveTextEditor(editor => {
-        if (editor) {
-            lastActiveEditor = editor;
-        }
-    });
+    // Track the last active text editor safely to support actions from the webview
+    const editorTracker = new EditorTracker();
+    context.subscriptions.push(editorTracker);
 
     // Initialise gutter-icon decoration type
     initDecorations(context);
@@ -50,10 +47,9 @@ export function activate(context: vscode.ExtensionContext) {
                     traceManager.updateNote(msg.id, msg.note);
                     break;
                 case 'relocateTrace': {
-                    // Use lastActiveEditor if current activeTextEditor is undefined (webview has focus)
-                    const editor = vscode.window.activeTextEditor || lastActiveEditor;
+                    const editor = editorTracker.activeOrLastEditor;
                     if (!editor) {
-                        vscode.window.showWarningMessage('TraceNotes: open a file to relocate the trace.');
+                        vscode.window.showErrorMessage('TraceNotes: Please open and focus a file to relocate the trace.');
                         return;
                     }
                     if (editor.selection.isEmpty) {
