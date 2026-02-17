@@ -1,27 +1,24 @@
 # TraceNotes
 
-> The best VS Code extension for code tracing and note-taking.
+> An extension for code tracing and note-taking that supports exporting and importing in Markdown format.
+
 
 ### Select the code and press **`Opt+C`** or **`Alt+C`** to collect traces; the rest is intuitive.
 
-![demo](./images/add_color_reorder.gif)
+![UI explanation](images/UI_explaination.png)
 
-### Manage Traces: Export and Import
-
-![manage_traces](./images/manage_traces.gif)
 
 ## Features
 
 - **Collect Traces** – Select code in any file and capture it as a trace point with smart dedent.
+- **Bi-directional Navigation** – Click a trace card to jump to code; move cursor in editor to scroll to the corresponding trace card.
 - **Hierarchical Organization** – Group traces into nested levels to organize complex code flows.
 - **Color Coded Highlights** – Categorize traces with distinct colors (Red, Blue, Green, Orange, Purple) via right-click context menu.
-- **Visual Cues** – Gutter icons and background highlights in the editor indicate traced code.
-- **Bi-directional Navigation** – Click a trace card to jump to code; move cursor in editor to scroll to the corresponding trace card.
 - **Sidebar Storyboard** – View all traces in a React-powered sidebar with syntax highlighting.
 - **Drag & Drop** – Reorder traces to build your narrative.
 - **Editable Notes** – Annotate each trace with context or observations.
 - **Markdown Export** – Export all traces (including nested groups) as a formatted Markdown document.
-- **Crash Recovery** – Traces persist in workspace state across reloads.
+- **Markdown Import** - Import traces from exported Markdown documents, enabling the sharing and backup of your traces.
 
 ## Usage
 
@@ -31,7 +28,6 @@
 2. Press `Option + C` (macOS) or `Alt + C` (Windows/Linux), or use the command `TraceNotes: Collect Trace`.
 3. The code snippet will appear as a new card in the TraceNotes sidebar.
 
-![illustration](./images/illustration.png)
 
 ### Hierarchical Organization
 

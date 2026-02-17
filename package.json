@@ -2,7 +2,7 @@
   "name": "tracenotes",
   "displayName": "TraceNotes",
   "description": "Collect code trace points and visualize them in a sidebar storyboard",
-  "version": "0.0.2",
+  "version": "0.0.4",
   "publisher": "RobertttBS",
   "icon": "images/icon.png",
   "repository": {
@@ -73,6 +73,7 @@
     "@types/react": "^18.2.48",
     "@types/react-dom": "^18.2.18",
     "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.7.1",
     "esbuild": "^0.20.0",
     "typescript": "^5.3.3"
   },
@@ -80,9 +81,9 @@
     "@dnd-kit/core": "^6.1.0",
     "@dnd-kit/sortable": "^8.0.0",
     "@dnd-kit/utilities": "^3.2.2",
+    "@types/react-syntax-highlighter": "^15.5.11",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-syntax-highlighter": "^15.5.0",
-    "@types/react-syntax-highlighter": "^15.5.11"
+    "react-syntax-highlighter": "^15.5.0"
   }
 }

@@ -122,15 +122,6 @@ export class TraceManager {
         }, 2000);
     }
 
-    /** Force immediate persistence (e.g. on deactivation) */
-    public persistImmediately(): void {
-        if (this.persistenceDebounceTimer) {
-            clearTimeout(this.persistenceDebounceTimer);
-            this.persistenceDebounceTimer = undefined;
-        }
-        this.context.workspaceState.update(this.storageKey, this.trees);
-    }
-
     /** Persist activeGroupId to workspaceState */
     private persistActiveGroup(): void {
         const data = this.activeGroupId !== null ? this.activeGroupId : undefined;
