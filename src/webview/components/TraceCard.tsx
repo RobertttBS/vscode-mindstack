@@ -4,14 +4,14 @@ import SyntaxHighlighter from 'react-syntax-highlighter/dist/esm/prism-light';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 // Register only the languages we actually need (instead of bundling all ~300)
-import tsx from 'refractor/lang/tsx';
-import typescript from 'refractor/lang/typescript';
-import javascript from 'refractor/lang/javascript';
-import python from 'refractor/lang/python';
-import json from 'refractor/lang/json';
-import bash from 'refractor/lang/bash';
-import css from 'refractor/lang/css';
-import markdown from 'refractor/lang/markdown';
+import tsx from 'refractor/tsx';
+import typescript from 'refractor/typescript';
+import javascript from 'refractor/javascript';
+import python from 'refractor/python';
+import json from 'refractor/json';
+import bash from 'refractor/bash';
+import css from 'refractor/css';
+import markdown from 'refractor/markdown';
 import type { TracePoint } from '../../types';
 
 SyntaxHighlighter.registerLanguage('tsx', tsx);

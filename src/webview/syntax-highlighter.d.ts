@@ -1,5 +1,5 @@
 // Type declarations for refractor language modules (no published @types)
-declare module 'refractor/lang/*';
+declare module 'refractor/*';
 declare module 'react-syntax-highlighter/dist/esm/prism-light' {
     import { ComponentType } from 'react';
     interface SyntaxHighlighterProps {
