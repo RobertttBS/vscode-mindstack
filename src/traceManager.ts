@@ -71,8 +71,8 @@ export class TraceManager {
                 this.persist();
             }
         } else {
-             // Initialize with a default empty tree if nothing exists
-             this.trees = [{
+            // Initialize with a default empty tree if nothing exists
+            this.trees = [{
                 id: 'default',
                 name: 'Default Trace',
                 createdAt: Date.now(),
@@ -127,7 +127,7 @@ export class TraceManager {
         const data = this.activeGroupId !== null ? this.activeGroupId : undefined;
         this.context.workspaceState.update(this.activeGroupKey, data);
     }
-    
+
     /** Persist activeTreeId to workspaceState */
     private persistActiveTree(): void {
         const data = this.activeTreeId !== null ? this.activeTreeId : undefined;
@@ -291,12 +291,13 @@ export class TraceManager {
         const target = this.getActiveChildren();
         target.push(trace);
 
-        this.activeTraceFiles.add(trace.filePath);
-        
+        const validUri = vscode.Uri.file(trace.filePath).toString();
+        this.activeTraceFiles.add(validUri);
+
         // Update index immediately for the new trace
-        const existing = this.traceIndex.get(trace.filePath) || [];
+        const existing = this.traceIndex.get(validUri) || [];
         existing.push(trace);
-        this.traceIndex.set(trace.filePath, existing);
+        this.traceIndex.set(validUri, existing);
 
         this.persist();
         this._onDidChangeTraces.fire();
@@ -391,23 +392,26 @@ export class TraceManager {
         // Update Index if file changed
         if (isDifferentFile) {
             // Remove from old index
-            const oldIndexList = this.traceIndex.get(oldFilePath);
+            const oldUriStr = vscode.Uri.file(oldFilePath).toString();
+            const oldIndexList = this.traceIndex.get(oldUriStr);
             if (oldIndexList) {
                 const idx = oldIndexList.findIndex(t => t.id === id);
                 if (idx !== -1) {
                     oldIndexList.splice(idx, 1);
                     if (oldIndexList.length === 0) {
-                        this.traceIndex.delete(oldFilePath);
-                        this.activeTraceFiles.delete(oldFilePath);
+                        this.traceIndex.delete(oldUriStr);
+                        this.activeTraceFiles.delete(oldUriStr);
                     }
                 }
             }
 
             // Add to new index
-            const newIndexList = this.traceIndex.get(newFilePath) || [];
+            // Use document.uri.toString() directly since we have the document
+            const newUriStr = document.uri.toString();
+            const newIndexList = this.traceIndex.get(newUriStr) || [];
             newIndexList.push(trace);
-            this.traceIndex.set(newFilePath, newIndexList);
-            this.activeTraceFiles.add(newFilePath);
+            this.traceIndex.set(newUriStr, newIndexList);
+            this.activeTraceFiles.add(newUriStr);
         } else {
             // Same file: The object reference in the index is the same, so no need to update index list structure,
             // but we might want to resort if we cared about order in index (we don't strictly require it).
@@ -434,7 +438,7 @@ export class TraceManager {
         treeList: { id: string; name: string; active: boolean }[];
     } {
         const active = this.getActiveTree();
-        const basicPayload = active 
+        const basicPayload = active
             ? { treeId: active.id, treeName: active.name, traces: active.traces }
             : { treeId: '', treeName: 'No Active Trace', traces: [] };
 
@@ -585,15 +589,16 @@ export class TraceManager {
         // That's bad.
         // 
         // Compromise: Update ALL trees in memory (fast offset math).
-        
+
         // Fast-path: If the file is not in our set, return immediately (0ms cost)
-        if (!this.activeTraceFiles.has(document.uri.fsPath)) {
+        const docUriStr = document.uri.toString();
+        if (!this.activeTraceFiles.has(docUriStr)) {
             return;
         }
-        
+
         // O(1) Retrieval from Index
-        const tracesInFile = this.traceIndex.get(document.uri.fsPath);
-        
+        const tracesInFile = this.traceIndex.get(docUriStr);
+
         if (!tracesInFile || tracesInFile.length === 0) return;
 
         let needsValidation = false;
@@ -648,16 +653,16 @@ export class TraceManager {
         // If we yield, we might need to put things back?
         // Better strategy: Process one doc at a time, check budget. 
         // If budget exceeded, put remaining docs back into pendingValidationDocs and schedule another run.
-        
+
         // We iterate the map directly. We can't easily "put back" into the front if we cleared it.
         // So let's NOT clear immediately. Iterate and remove handled ones.
-        
+
         const iterator = this.pendingValidationDocs.entries();
         let result = iterator.next();
 
         while (!result.done) {
             const [uri, document] = result.value;
-            
+
             // Check budget
             if (Date.now() - startTime > TraceManager.VALIDATION_BUDGET_MS) {
                 // Time's up for this tick. Schedule continuation.
@@ -670,26 +675,26 @@ export class TraceManager {
 
             // Remove current from queue as we process it
             this.pendingValidationDocs.delete(uri);
-            
+
             // Process the document
-            const tracesInFile = this.traceIndex.get(document.uri.fsPath);
+            const tracesInFile = this.traceIndex.get(document.uri.toString());
             if (tracesInFile) {
                 for (const trace of tracesInFile) {
                     // Check budget inside trace loop for documents with MANY traces
-                     if (Date.now() - startTime > TraceManager.VALIDATION_BUDGET_MS) {
+                    if (Date.now() - startTime > TraceManager.VALIDATION_BUDGET_MS) {
                         // Put this doc back in queue! 
                         // We haven't finished this doc.
                         // Ideally we resume where we left off, but re-processing some traces is okay.
                         // Or we can just break and let the outer loop handle "re-queueing".
                         // Use pendingValidationDocs.set(uri, document) to ensure it stays.
                         this.pendingValidationDocs.set(uri, document);
-                        break; 
+                        break;
                     }
 
                     if (!trace.rangeOffset) continue;
 
                     const [startOffset, endOffset] = trace.rangeOffset;
-                    
+
                     if (startOffset < 0 || endOffset > document.getText().length) {
                         trace.orphaned = true;
                         stateChanged = true;
@@ -698,18 +703,18 @@ export class TraceManager {
 
                     const startPos = document.positionAt(startOffset);
                     const endPos = document.positionAt(endOffset);
-                    
+
                     // Update lineRange and check for changes
                     const newStartLine = startPos.line;
                     const newEndLine = endPos.line;
-                    
+
                     if (!trace.lineRange || trace.lineRange[0] !== newStartLine || trace.lineRange[1] !== newEndLine) {
                         trace.lineRange = [newStartLine, newEndLine];
                         stateChanged = true;
                     }
 
                     const currentContent = document.getText(new vscode.Range(startPos, endPos));
-                    
+
                     if (!this.contentMatches(currentContent, trace.content)) {
                         // RECOVERY: This is the expensive part (Regex)
                         const recovered = this.recoverTracePoints(document, trace.content, startOffset);
@@ -776,12 +781,12 @@ export class TraceManager {
     }
 
     private recoverTracePoints(
-        document: vscode.TextDocument, 
-        storedContent: string, 
+        document: vscode.TextDocument,
+        storedContent: string,
         lastKnownStart: number
     ): [number, number] | null {
         const fullText = document.getText();
-        
+
         const searchStart = Math.max(0, lastKnownStart - TraceManager.SEARCH_RADIUS);
         const searchEnd = Math.min(fullText.length, lastKnownStart + TraceManager.SEARCH_RADIUS + storedContent.length);
         const searchArea = fullText.slice(searchStart, searchEnd);
@@ -795,11 +800,11 @@ export class TraceManager {
         if (storedContent.length <= TraceManager.MAX_REGEX_LENGTH) {
             const escapedContent = storedContent.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
             const flexibleRegexStr = escapedContent.replace(/\s+/g, '\\s+');
-            
+
             try {
                 const regex = new RegExp(flexibleRegexStr, 'g');
                 const match = regex.exec(searchArea);
-                
+
                 if (match) {
                     const absoluteStart = searchStart + match.index;
                     const absoluteEnd = absoluteStart + match[0].length;
@@ -812,11 +817,11 @@ export class TraceManager {
 
         const minAnchorLength = 20;
         const contentLines = storedContent.trim().split('\n');
-        
+
         if (contentLines.length >= 3 && storedContent.length > minAnchorLength * 2) {
             const headText = contentLines[0].trim();
             const tailText = contentLines[contentLines.length - 1].trim();
-            
+
             // 在 searchArea 尋找頭部
             const headIdx = searchArea.indexOf(headText);
             if (headIdx >= 0) {
@@ -824,10 +829,10 @@ export class TraceManager {
                 const expectedTailPos = headIdx + storedContent.length;
                 const searchTailStart = Math.max(headIdx, expectedTailPos - 500);
                 const searchTailEnd = Math.min(searchArea.length, expectedTailPos + 500);
-                
+
                 const tailSearchArea = searchArea.slice(searchTailStart, searchTailEnd);
                 const tailIdxInSlice = tailSearchArea.indexOf(tailText);
-                
+
                 if (tailIdxInSlice >= 0) {
                     const absoluteStart = searchStart + headIdx;
                     const absoluteEnd = searchStart + searchTailStart + tailIdxInSlice + tailText.length;
@@ -859,14 +864,15 @@ export class TraceManager {
     private rebuildTraceIndex(): void {
         this.activeTraceFiles.clear();
         this.traceIndex.clear();
-        
+
         const visit = (traces: TracePoint[]) => {
             for (const t of traces) {
-                this.activeTraceFiles.add(t.filePath);
-                
-                const list = this.traceIndex.get(t.filePath) || [];
+                const validUri = vscode.Uri.file(t.filePath).toString();
+                this.activeTraceFiles.add(validUri);
+
+                const list = this.traceIndex.get(validUri) || [];
                 list.push(t);
-                this.traceIndex.set(t.filePath, list);
+                this.traceIndex.set(validUri, list);
 
                 if (t.children && t.children.length > 0) {
                     visit(t.children);
@@ -884,7 +890,7 @@ export class TraceManager {
 
     /** Public Accessor for efficient extensions usage */
     public getTracesForFile(filePath: string): TracePoint[] {
-        return this.traceIndex.get(filePath) || [];
+        return this.traceIndex.get(vscode.Uri.file(filePath).toString()) || [];
     }
 
     // ── Import Logic ─────────────────────────────────────────────
@@ -892,7 +898,7 @@ export class TraceManager {
     public async importTraceTree(markdown: string, treeName?: string): Promise<void> {
         try {
             const importedTraces = await this.parseMarkdown(markdown);
-            
+
             // Create a new tree for the imported traces
             const finalTreeName = treeName || `Imported Trace ${new Date().toLocaleString()}`;
             const newTree: TraceTree = {
@@ -926,7 +932,7 @@ export class TraceManager {
 
         // RegExp to match headers: ## 1. Title (Orphaned)
         const headerRegex = /^(#+)\s+\d+\.\s+(.*)/;
-        
+
         // RegExp to match code block start: ```language startLine:endLine:filePath
         const codeBlockStartRegex = /^```(\w*)\s+(\d+|\?):(\d+|\?):(.+)$/;
 
@@ -943,7 +949,7 @@ export class TraceManager {
                     const endLine = match[3] === '?' ? 0 : parseInt(match[3]) - 1;
                     // filePath is match[4], but we might need to validation/normalization
                     // For now, assume absolute path from export
-                    const filePath = match[4].trim(); 
+                    const filePath = match[4].trim();
                     currentTrace.filePath = filePath;
                     currentTrace.lineRange = [startLine, endLine];
                 }
@@ -955,23 +961,23 @@ export class TraceManager {
                 if (currentTrace) {
                     currentTrace.content = currentContent.join('\n');
                     currentContent = [];
-                    
+
                     // Validate and Recover
                     const validated = await this.validateAndRecover(currentTrace as TracePoint);
                     if (validated) {
                         const trace = validated;
-                        
+
                         // Determine parent based on depth
                         // Header depth: # = h1 (File title), ## = h2 (Root trace), ### = h3 (Child)
                         // In export: Root = ## (depth 0), Child = ### (depth 1)
                         // currentTrace.depth is derived from header length
                         // Let's rely on the stack
-                        
+
                         // If stack is empty, push to root
                         while (stack.length > 0 && stack[stack.length - 1].depth >= (currentTrace as any)._tempDepth) {
                             stack.pop();
                         }
-                        
+
                         if (stack.length > 0) {
                             const parent = stack[stack.length - 1].trace;
                             if (!parent.children) parent.children = [];
@@ -979,10 +985,10 @@ export class TraceManager {
                         } else {
                             rootTraces.push(trace);
                         }
-                        
+
                         stack.push({ trace, depth: (currentTrace as any)._tempDepth });
                     }
-                    
+
                     currentTrace = null;
                 }
                 continue;
@@ -998,7 +1004,7 @@ export class TraceManager {
             if (headerMatch) {
                 const hashes = headerMatch[1];
                 const rawTitle = headerMatch[2].trim();
-                
+
                 // depth 0 is ## (length 2)
                 const depth = hashes.length - 2;
                 if (depth < 0) continue; // Skip document title #
@@ -1011,7 +1017,7 @@ export class TraceManager {
                 }
                 // Also check if orphaned was in the note/title in a different way? 
                 // Export format: `${title} ${t.orphaned ? '(Orphaned)' : ''}`
-                
+
                 currentTrace = {
                     id: crypto.randomUUID(),
                     note: title,
@@ -1019,13 +1025,13 @@ export class TraceManager {
                     children: [],
                     _tempDepth: depth // Helper for stack management
                 } as any;
-                
+
             } else if (currentTrace && line.trim().length > 0 && !line.trim().startsWith('---')) {
                 // Append to note if it's not a separator
-                 currentTrace.note += '\n' + line;
+                currentTrace.note += '\n' + line;
             }
         }
-        
+
         return rootTraces;
     }
 
@@ -1040,25 +1046,25 @@ export class TraceManager {
             }
 
             const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(trace.filePath));
-            
+
             // 1. Check exact match at coordinates
             if (trace.lineRange) {
                 const [startLine, endLine] = trace.lineRange;
                 if (startLine < doc.lineCount) {
-                     const startPos = new vscode.Position(startLine, 0);
-                     const endLineObj = doc.lineAt(Math.min(endLine, doc.lineCount - 1));
-                     const endPos = endLineObj.range.end;
-                     
-                     const text = doc.getText(new vscode.Range(startPos, endPos));
-                     
-                     if (this.contentMatches(text, trace.content)) {
-                         trace.rangeOffset = [doc.offsetAt(startPos), doc.offsetAt(endPos)];
-                         trace.orphaned = false;
-                         return trace;
-                     }
+                    const startPos = new vscode.Position(startLine, 0);
+                    const endLineObj = doc.lineAt(Math.min(endLine, doc.lineCount - 1));
+                    const endPos = endLineObj.range.end;
+
+                    const text = doc.getText(new vscode.Range(startPos, endPos));
+
+                    if (this.contentMatches(text, trace.content)) {
+                        trace.rangeOffset = [doc.offsetAt(startPos), doc.offsetAt(endPos)];
+                        trace.orphaned = false;
+                        return trace;
+                    }
                 }
             }
-            
+
             // 2. Mismatch or invalid coords -> Recover
             let estimatedOffset = 0;
             if (trace.lineRange && trace.lineRange[0] < doc.lineCount) {
