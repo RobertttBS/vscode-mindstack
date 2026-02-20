@@ -626,13 +626,8 @@ export class TraceManager implements vscode.Disposable {
         const startTime = Date.now();
         let stateChanged = false;
 
-        const iterator = this.pendingValidationDocs.entries();
-        let result = iterator.next();
-
-        while (!result.done) {
+        for (const [uri, document] of this.pendingValidationDocs) {
             if (token.isCancellationRequested) return;
-
-            const [uri, document] = result.value;
 
             if (Date.now() - startTime > TraceManager.VALIDATION_BUDGET_MS) {
                 if (this.validationDebounceTimer) { clearTimeout(this.validationDebounceTimer); }
@@ -702,8 +697,6 @@ export class TraceManager implements vscode.Disposable {
                     }
                 }
             }
-
-            result = iterator.next();
         }
 
         if (stateChanged) {
