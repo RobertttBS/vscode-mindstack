@@ -564,7 +564,7 @@ export class TraceManager implements vscode.Disposable {
         const tracesInFile = this.traceIndex.get(docUriStr);
         if (!tracesInFile || tracesInFile.length === 0) return;
 
-        let needsValidation = false;
+        let needsValidation = tracesInFile.some(t => t.orphaned);
 
         for (const change of event.contentChanges) {
             const changeStart = change.rangeOffset;
@@ -659,8 +659,10 @@ export class TraceManager implements vscode.Disposable {
                     const [startOffset, endOffset] = trace.rangeOffset;
 
                     if (startOffset < 0 || endOffset > document.getText().length) {
-                        trace.orphaned = true;
-                        stateChanged = true;
+                        if (!trace.orphaned) {
+                            trace.orphaned = true;
+                            stateChanged = true;
+                        }
                         continue;
                     }
 
@@ -684,11 +686,16 @@ export class TraceManager implements vscode.Disposable {
                             const rStart = document.positionAt(recovered[0]);
                             const rEnd = document.positionAt(recovered[1]);
                             trace.lineRange = [rStart.line, rEnd.line];
-                            trace.orphaned = false;
+                            if (trace.orphaned) {
+                                trace.orphaned = false;
+                            }
+                            stateChanged = true;
                         } else {
-                            trace.orphaned = true;
+                            if (!trace.orphaned) {
+                                trace.orphaned = true;
+                                stateChanged = true;
+                            }
                         }
-                        stateChanged = true;
                     } else if (trace.orphaned) {
                         trace.orphaned = false;
                         stateChanged = true;
