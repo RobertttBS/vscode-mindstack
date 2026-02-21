@@ -989,7 +989,18 @@ export class TraceManager implements vscode.Disposable {
                 return null;
             }
 
-            const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(trace.filePath));
+            const uri = vscode.Uri.file(trace.filePath);
+            let doc = vscode.workspace.textDocuments.find(d => d.uri.toString() === uri.toString());
+            let newlyOpened = false;
+
+            if (!doc) {
+                doc = await vscode.workspace.openTextDocument(uri);
+                newlyOpened = true;
+            }
+
+            if (newlyOpened) {
+                await new Promise(resolve => setTimeout(resolve, 0));
+            }
 
             if (trace.lineRange) {
                 const [startLine, endLine] = trace.lineRange;
