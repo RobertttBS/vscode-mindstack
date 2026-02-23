@@ -2,121 +2,79 @@
 
 > An extension for code tracing and note-taking that supports exporting and importing in Markdown format.
 
-
 ### Select the code and press **`Opt+C`** or **`Alt+C`** to collect traces; the rest is intuitive.
 
 ![UI explanation](images/UI_explaination.png)
 
+TraceNotes is an extension for navigating and documenting code logic. It allows you to build a structured narrative of code flows that stay synchronized with the editor.
 
 ## Features
 
-- **Collect Traces** – Select code in any file and capture it as a trace point with smart dedent.
-- **Bi-directional Navigation** – Click a trace card to jump to code; move cursor in editor to scroll to the corresponding trace card.
-- **Hierarchical Organization** – Group traces into nested levels to organize complex code flows.
-- **Color Coded Highlights** – Categorize traces with distinct colors (Red, Blue, Green, Orange, Purple) via right-click context menu.
-- **Sidebar Storyboard** – View all traces in a React-powered sidebar with syntax highlighting.
-- **Drag & Drop** – Reorder traces to build your narrative.
-- **Editable Notes** – Annotate each trace with context or observations.
-- **Markdown Export** – Export all traces (including nested groups) as a formatted Markdown document.
-- **Markdown Import** - Import traces from exported Markdown documents, enabling the sharing and backup of your traces.
+### Trace Collection
+
+- **Capture** – Select code and press `Opt+C` or `Alt+C` to create a trace point.
+- **Indentation Correction** – Automatically removes leading indentation from collected snippets based on the selection.
+- **Recovery** – Trace points attempt to maintain their position when files are modified, though accuracy may vary depending on the extent of the changes.
+
+### Markdown Portability
+
+- **Export** – Save collected traces to a Markdown file. The export preserves the hierarchy using standard Markdown headings.
+- **Import** – Load trace data back into the extension from supported Markdown documents.
+
+### Additional Capabilities
+
+- **Organization** – Group traces into levels (up to 10 levels deep), manage multiple trace trees, and reorder cards via drag and drop.
+- **Synchronization** – Link trace cards to source lines for bi-directional navigation. Cursor movement highlights associated cards.
+- **Visual Markers** – Assign colors to traces to highlight sidebar cards and editor gutter positions.
+- **Annotations** – Add notes to individual trace points to provide context.
+
+---
 
 ## Usage
 
 ### Collecting Traces
 
-1. Select any block of code in your editor.
-2. Press `Option + C` (macOS) or `Alt + C` (Windows/Linux), or use the command `TraceNotes: Collect Trace`.
-3. The code snippet will appear as a new card in the TraceNotes sidebar.
+Select code in the editor and press **`Opt + C`** (macOS) or **`Alt + C`** (Windows). The snippet is added as a card in the sidebar storyboard.
 
+### Markdown Export & Import
 
-### Hierarchical Organization
+- **Export**: Click the **Export** icon in the sidebar header to generate a `.md` file.
+- **Import**: Use the import command to restore a trace tree from a previously exported file.
 
-TraceNotes supports up to 10 levels of nesting to help you structure your analysis:
+### Organization & Management
 
-- Click the **"+ Childs"** (or **"> N Childs"**) button on any trace card to enter that group.
-- New traces collected while in a group will be added as children of that parent trace.
-- Use the **Breadcrumbs** at the top or the **"Back"** button to navigate up to parent levels.
+- **Nesting**: Click **"+ Childs"** on a card to enter a nested level. Traces added here become children of that card.
+- **Navigation**: Click a card to jump to its location. Use breadcrumbs to move between levels.
+- **Reorder**: Drag and drop cards to change the sequence within the current level.
+- **Update**: Use the context menu on a card to **Relocate** it to a new selection or assign a **Highlight** color.
 
-### Color Highlighting
+---
 
-- **Right-click** on any trace card to open the color selection menu.
-- Choose from **Red**, **Blue**, **Green**, **Orange**, or **Purple** to highlight the trace card and the corresponding code in the editor.
-- Select the "None" option to remove the highlight.
+## Commands & Shortcuts
 
-### Markdown Export
+| Action            | Shortcut (macOS) | Shortcut (Win/Linux) | Command                            |
+| :---------------- | :--------------- | :------------------- | :--------------------------------- |
+| **Collect Trace** | `Option + C`     | `Alt + C`            | `TraceNotes: Collect Trace`        |
+| **Export MD**     | —                | —                    | `TraceNotes: Export to Markdown`   |
+| **Import MD**     | —                | —                    | `TraceNotes: Import from Markdown` |
+| **Clear Current** | —                | —                    | `TraceNotes: Clear All Traces`     |
 
-- Click the **Export** icon (document with arrow) in the sidebar header to generate a Markdown file containing all your traces.
-- Nested traces are rendered with appropriate heading levels to preserve the structure.
-
-### Clearing Traces
-
-- Click the **Trash Can** icon in the sidebar header to clear all traces **in the current level**.
-- This allows you to reset a specific group without losing the entire trace history.
-
-## Commands
-
-| Command                          | Keybinding (macOS) | Keybinding (Win/Linux) | Description                                    |
-| :------------------------------- | :----------------- | :--------------------- | :--------------------------------------------- |
-| `TraceNotes: Collect Trace`      | `Option + C`       | `Alt + C`              | Capture the current selection as a trace point |
-| `TraceNotes: Export to Markdown` | -                  | -                      | Export all traces to a new Markdown document   |
-| `TraceNotes: Clear All Traces`   | -                  | -                      | Remove all collected traces                    |
-
-## Development
-
-### Prerequisites
-
-- Node.js ≥ 18
-- VS Code ≥ 1.85
-
-### Setup
-
-```bash
-npm install
-npm run build
-```
-
-### Run in Development
-
-```bash
-code --extensionDevelopmentPath=$(pwd)
-```
-
-Or press `F5` in VS Code to launch the Extension Development Host.
-
-### Watch Mode
-
-```bash
-npm run watch
-```
-
-### Build VSIX
-
-To package the extension into a `.vsix` file for installation:
-
-```bash
-npx @vscode/vsce package
-```
+---
 
 ## Project Structure
 
-```
+```text
 src/
-├── extension.ts        # Entry point, commands, message routing
-├── types.ts            # TracePoint interface & message types
-├── traceManager.ts     # State manager with persistence
-├── collector.ts        # Code selection + smart dedent
-├── decoration.ts       # Editor decorations (gutter icons, highlights)
-├── exporter.ts         # Markdown generator
-├── webviewProvider.ts  # Sidebar webview provider
-└── webview/
-    ├── index.tsx               # React entry + styles
-    ├── components/
-    │   ├── Storyboard.tsx      # Main wrapper, search, breadcrumbs
-    │   └── TraceCard.tsx       # Individual trace card with context menu
-    └── utils/
-        └── messaging.ts        # Extension ↔ Webview helpers
+├── extension.ts        # Entry point and command routing
+├── traceManager.ts     # State management and recovery logic
+├── collector.ts        # Snippet extraction and indentation handling
+├── decorationManager.ts# Editor visual sync
+├── exporter.ts         # Markdown generation
+└── webview/            # Sidebar UI
 ```
+
+---
 
 ## License
 
-MIT
+Distributed under the **MIT License**.

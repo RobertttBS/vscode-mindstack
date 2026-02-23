@@ -12,7 +12,7 @@ export interface TracePoint {
     timestamp: number;
     highlight?: 'red' | 'blue' | 'green' | 'orange' | 'purple' | null;
     orphaned?: boolean;
-    children?: TracePoint[];     // sub-traces (max 3 levels deep)
+    children?: TracePoint[];     // sub-traces (max 10 levels deep)
 }
 
 /** Root level container for a tree of traces */
