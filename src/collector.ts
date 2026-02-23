@@ -17,7 +17,7 @@ export function collectTrace(editor: vscode.TextEditor): TracePoint | null {
     const filePath = editor.document.uri.fsPath;
 
     // Smart dedent algorithm
-    const lines = text.split('\n');
+    const lines = text.split(/\r?\n/);
     const minIndent = lines.reduce((min, line) => {
         if (line.trim().length === 0) { return min; }
         const match = line.match(/^\s*/);

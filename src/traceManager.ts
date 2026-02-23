@@ -431,7 +431,7 @@ export class TraceManager implements vscode.Disposable {
         const isDifferentFile = oldFilePath !== newFilePath;
 
         const text = document.getText(selection);
-        const lines = text.split('\n');
+        const lines = text.split(/\r?\n/);
         const minIndent = lines.reduce((min, line) => {
             if (line.trim().length === 0) { return min; }
             const match = line.match(/^\s*/);
@@ -821,7 +821,7 @@ export class TraceManager implements vscode.Disposable {
 
         // 2. Regex-based Anchor Matching (Handles Indentation changes)
         // We escape special regex chars and allow flexible whitespace \s*
-        const lines = cleanContent.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+        const lines = cleanContent.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
         
         if (lines.length >= 2) {
             const headRegex = this.escapeRegExp(lines[0]);
@@ -921,7 +921,7 @@ export class TraceManager implements vscode.Disposable {
     }
 
     private async parseMarkdown(markdown: string): Promise<TracePoint[]> {
-        const lines = markdown.split('\n');
+        const lines = markdown.split(/\r?\n/);
         const rootTraces: TracePoint[] = [];
         const stack: { trace: TracePoint, depth: number }[] = [];
 

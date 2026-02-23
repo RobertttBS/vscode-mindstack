@@ -23,10 +23,10 @@ function renderTrace(t: TracePoint, index: number, depth: number): string {
     const fileName = t.filePath.split('/').pop() ?? t.filePath;
 
     const startLine = t.lineRange ? t.lineRange[0] + 1 : '?';
-    const title = t.note ? t.note.split('\n')[0] : `${fileName}:${startLine}`;
+    const title = t.note ? t.note.split(/\r?\n/)[0] : `${fileName}:${startLine}`;
     let md = `${heading} ${index + 1}. ${title} ${t.orphaned ? '(Orphaned)' : ''}\n\n`;
     if (t.note) {
-        const rest = t.note.split('\n').slice(1).join('\n').trim();
+        const rest = t.note.split(/\r?\n/).slice(1).join('\n').trim();
         if (rest) {
             md += `${rest}\n\n`;
         }
