@@ -5,7 +5,6 @@ export interface TracePoint {
     id: string;
     filePath: string;
     rangeOffset: [number, number]; // [startOffset, endOffset] (absolute)
-    /** @deprecated used for migration only */
     lineRange?: [number, number]; 
     content: string;             // dedented source code
     lang: string;                // language id for syntax highlighting

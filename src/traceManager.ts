@@ -11,7 +11,6 @@ export interface ITraceDocument {
 
 export class TraceManager implements vscode.Disposable {
     private static readonly SEARCH_RADIUS = 5000;
-    private static readonly MAX_REGEX_LENGTH = 2000;
     private static readonly VALIDATION_BUDGET_MS = 15;
 
     private trees: TraceTree[] = [];

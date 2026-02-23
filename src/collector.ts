@@ -2,9 +2,6 @@ import * as vscode from 'vscode';
 import { TracePoint } from './types';
 import { generateIsomorphicUUID } from './utils/uuid';
 
-// function used to exist here, now using crypto.randomUUID() inline
-
-
 /**
  * Collect a trace from the current editor selection.
  * Applies smart dedent to remove excess leading whitespace.

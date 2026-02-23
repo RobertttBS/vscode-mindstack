@@ -150,28 +150,6 @@ export function activate(context: vscode.ExtensionContext) {
             const treeData = traceManager.getActiveTreeData();
             const fileName = treeData ? `${treeData.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.md` : 'tracenotes.md';
 
-            // Just open a new untitled document with the content? 
-            // Or let user save?
-            // "The user wants to name the markdown file name"
-            // vscode.workspace.openTextDocument({ content: md, language: 'markdown' }) 
-            // creates an untitled document. It doesn't set the filename until save.
-            // But we can suggest a name if we use showSaveDialog, OR we can just open it.
-            // Opening an untitled document with a specific name is tricky.
-            // Actually, we can just open it. The user said "When exporting the markdown, it will use the name as markdown file name."
-            // This implies when saving? Or we can simulate it by standard "Save As" flow?
-            // Let's stick to the current behavior (openTextDocument) but maybe we can't easily force the name 
-            // unless we save it.
-            // For now, let's keep the existing flow but if we wanted to enforce name we'd need save dialog.
-            // Code snippet below uses openTextDocument.
-
-            // To suggest a name, we might want to use showSaveDialog instead.
-            // But for now, I'll stick to opening the document, but I can't easily set the title of untitled doc.
-            // Actually, I can try to set the language and maybe content.
-
-            // Wait, the user requirement is "When exporting the markdown, it will use the name as markdown file name."
-            // If I just show it, it's "Untitled-1".
-            // Implementation idea: Use showSaveDialog to let user pick location, using tree name as default.
-
             const uri = await vscode.window.showSaveDialog({
                 defaultUri: vscode.Uri.file(fileName),
                 filters: { 'Markdown': ['md'] }
