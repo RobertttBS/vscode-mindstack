@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { TracePoint, TraceTree, MAX_DEPTH } from './types';
 
 export interface ITraceDocument {
@@ -944,7 +945,16 @@ export class TraceManager implements vscode.Disposable {
                     const startLine = match[2] === '?' ? 0 : parseInt(match[2]) - 1;
                     const endLine = match[3] === '?' ? 0 : parseInt(match[3]) - 1;
                     const filePath = match[4].trim();
-                    currentTrace.filePath = filePath;
+                    if (path.isAbsolute(filePath)) {
+                        currentTrace.filePath = filePath;
+                    } else {
+                        const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+                        if (workspaceFolder) {
+                            currentTrace.filePath = vscode.Uri.joinPath(workspaceFolder.uri, filePath).fsPath;
+                        } else {
+                            currentTrace.filePath = filePath;
+                        }
+                    }
                     currentTrace.lineRange = [startLine, endLine];
                 }
                 continue;

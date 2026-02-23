@@ -1,3 +1,4 @@
+import * as vscode from 'vscode';
 import { TracePoint } from './types';
 
 /**
@@ -20,10 +21,9 @@ export function generateMarkdown(traces: TracePoint[]): string {
 function renderTrace(t: TracePoint, index: number, depth: number): string {
     // Root = ##, child = ###, grandchild = ####
     const heading = '#'.repeat(depth + 2);
-    const fileName = t.filePath.split('/').pop() ?? t.filePath;
-
+    const relativePath = vscode.workspace.asRelativePath(t.filePath, false);
     const startLine = t.lineRange ? t.lineRange[0] + 1 : '?';
-    const title = t.note ? t.note.split('\n')[0] : `${fileName}:${startLine}`;
+    const title = t.note ? t.note.split('\n')[0] : '';
     let md = `${heading} ${index + 1}. ${title} ${t.orphaned ? '(Orphaned)' : ''}\n\n`;
     if (t.note) {
         const rest = t.note.split('\n').slice(1).join('\n').trim();
@@ -33,7 +33,7 @@ function renderTrace(t: TracePoint, index: number, depth: number): string {
     }
     
     const endLine = t.lineRange ? t.lineRange[1] + 1 : '?';
-    md += '```' + t.lang + ` ${startLine}:${endLine}:${t.filePath}` + '\n';
+    md += '```' + t.lang + ` ${startLine}:${endLine}:${relativePath}` + '\n';
     md += t.content + '\n';
     md += '```\n\n';
 
