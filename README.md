@@ -4,7 +4,7 @@
 
 ### Select the code and press **`Opt+C`** or **`Alt+C`** to collect traces; the rest is intuitive.
 
-![UI explanation](images/UI_explaination.png)
+![UI explanation](images/UI_explaination.jpeg)
 
 TraceNotes is an extension for navigating and documenting code logic. It allows you to build a structured narrative of code flows that stay synchronized with the editor.
 
