@@ -105,7 +105,9 @@ export function activate(context: vscode.ExtensionContext) {
     );
 
     context.subscriptions.push(
-        vscode.window.registerWebviewViewProvider(StoryboardProvider.viewType, provider),
+        vscode.window.registerWebviewViewProvider(StoryboardProvider.viewType, provider, {
+            webviewOptions: { retainContextWhenHidden: true },
+        }),
     );
 
     // Command: Collect Trace
