@@ -1,16 +1,10 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { TracePoint, TraceTree, MAX_DEPTH } from './types';
-
-export interface ITraceDocument {
-    lineCount: number;
-    offsetAt(position: vscode.Position): number;
-    positionAt(offset: number): vscode.Position;
-    lineAt(line: number): { range: { end: vscode.Position } };
-    getText(range?: vscode.Range): string;
-}
+import { TracePoint, TraceTree, MAX_DEPTH, ITraceDocument } from './types';
+import { TraceRecoveryEngine } from './traceRecoveryEngine';
 
 export class TraceManager implements vscode.Disposable {
+    private recoveryEngine: TraceRecoveryEngine;
     private static readonly SEARCH_RADIUS = 5000;
     private static readonly VALIDATION_BUDGET_MS = 15;
 
@@ -38,6 +32,7 @@ export class TraceManager implements vscode.Disposable {
     public readonly onDidChangeTraces = this._onDidChangeTraces.event;
 
     constructor(private context: vscode.ExtensionContext) {
+        this.recoveryEngine = new TraceRecoveryEngine();
         this.restore();
 
         // Cleanup validation queue when documents are closed to avoid memory leaks
@@ -733,12 +728,12 @@ export class TraceManager implements vscode.Disposable {
                     const currentContent = document.getText(new vscode.Range(startPos, endPos));
 
                     if (!this.contentMatches(currentContent, trace.content)) {
-                        const recovered = this.recoverTracePoints(document, trace.content, startOffset);
-                        if (recovered) {
-                            trace.rangeOffset = recovered;
-                            const rStart = document.positionAt(recovered[0]);
-                            const rEnd = document.positionAt(recovered[1]);
-                            trace.lineRange = [rStart.line, rEnd.line];
+                        const recoveredRange = this.recoveryEngine.recoverTracePoints(document, trace.content, startOffset);
+                        if (recoveredRange) {
+                            const recoveredStart = document.offsetAt(recoveredRange.start);
+                            const recoveredEnd = document.offsetAt(recoveredRange.end);
+                            trace.rangeOffset = [recoveredStart, recoveredEnd];
+                            trace.lineRange = [recoveredRange.start.line, recoveredRange.end.line];
                             if (trace.orphaned) {
                                 trace.orphaned = false;
                             }
@@ -798,77 +793,7 @@ export class TraceManager implements vscode.Disposable {
         }
     }
 
-    /**
-     * Improved recovery logic with whitespace normalization and proximity weighting
-     */
-    private recoverTracePoints(
-        document: ITraceDocument,
-        storedContent: string,
-        lastKnownStart: number
-    ): [number, number] | null {
-        const fullText = document.getText();
-        const cleanContent = storedContent.trim();
-        
-        // 1. Exact Match in Radius (Fastest)
-        const searchStart = Math.max(0, lastKnownStart - TraceManager.SEARCH_RADIUS);
-        const searchEnd = Math.min(fullText.length, lastKnownStart + TraceManager.SEARCH_RADIUS + cleanContent.length);
-        const searchArea = fullText.slice(searchStart, searchEnd);
 
-        const localIdx = searchArea.indexOf(cleanContent);
-        if (localIdx >= 0) {
-            const start = searchStart + localIdx;
-            return [start, start + cleanContent.length];
-        }
-
-        // 2. Regex-based Anchor Matching (Handles Indentation changes)
-        // We escape special regex chars and allow flexible whitespace \s*
-        const lines = cleanContent.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
-        
-        if (lines.length >= 2) {
-            const headRegex = this.escapeRegExp(lines[0]);
-            const tailRegex = this.escapeRegExp(lines[lines.length - 1]);
-            
-            // Search for the head anchor within the search area
-            const headMatch = new RegExp(headRegex, 'g').exec(searchArea);
-            if (headMatch) {
-                // Look for the tail anchor after the head match
-                const tailSearchArea = searchArea.slice(headMatch.index + headMatch[0].length);
-                const tailMatch = new RegExp(tailRegex, 'g').exec(tailSearchArea);
-                
-                if (tailMatch) {
-                    const absoluteStart = searchStart + headMatch.index;
-                    const absoluteEnd = absoluteStart + headMatch[0].length + tailMatch.index + tailMatch[0].length;
-                    return [absoluteStart, absoluteEnd];
-                }
-            }
-        }
-
-        // 3. Proximity-based Global Search
-        // If it moved far away, find the instance closest to the original offset
-        return this.findClosestMatch(fullText, cleanContent, lastKnownStart);
-    }
-
-    private findClosestMatch(fullText: string, target: string, preferredOffset: number): [number, number] | null {
-        let bestOffset = -1;
-        let minDiff = Infinity;
-        let currIdx = fullText.indexOf(target);
-
-        while (currIdx !== -1) {
-            const diff = Math.abs(currIdx - preferredOffset);
-            if (diff < minDiff) {
-                minDiff = diff;
-                bestOffset = currIdx;
-            }
-            currIdx = fullText.indexOf(target, currIdx + 1);
-        }
-
-        return bestOffset !== -1 ? [bestOffset, bestOffset + target.length] : null;
-    }
-
-    private escapeRegExp(string: string): string {
-        // Escapes regex special characters and replaces literal spaces with \s+
-        return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s*');
-    }
 
     private contentMatches(docContent: string, storedContent: string): boolean {
         const normDoc = docContent.replace(/\s+/g, ' ').trim();
@@ -1095,7 +1020,10 @@ export class TraceManager implements vscode.Disposable {
                                 const start = lineOffsets[line];
                                 let end = line + 1 < lineOffsets.length ? lineOffsets[line + 1] - 1 : fullText.length;
                                 if (end > start && fullText[end - 1] === '\r') end--;
-                                return { range: { end: new vscode.Position(line, end - start) } };
+                                return { 
+                                    range: { end: new vscode.Position(line, end - start) },
+                                    text: fullText.substring(start, end)
+                                };
                             },
                             getText: (range?: vscode.Range) => {
                                 if (!range) return fullText;
@@ -1134,12 +1062,10 @@ export class TraceManager implements vscode.Disposable {
                 estimatedOffset = docAdapter.offsetAt(new vscode.Position(trace.lineRange[0], 0));
             }
 
-            const recovered = this.recoverTracePoints(docAdapter, trace.content, estimatedOffset);
-            if (recovered) {
-                trace.rangeOffset = recovered;
-                const rStart = docAdapter.positionAt(recovered[0]);
-                const rEnd = docAdapter.positionAt(recovered[1]);
-                trace.lineRange = [rStart.line, rEnd.line];
+            const recoveredRange = this.recoveryEngine.recoverTracePoints(docAdapter, trace.content, estimatedOffset);
+            if (recoveredRange) {
+                trace.rangeOffset = [docAdapter.offsetAt(recoveredRange.start), docAdapter.offsetAt(recoveredRange.end)];
+                trace.lineRange = [recoveredRange.start.line, recoveredRange.end.line];
                 trace.orphaned = false;
                 return trace;
             } else {

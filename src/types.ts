@@ -1,4 +1,14 @@
+import * as vscode from 'vscode';
+
 export const MAX_DEPTH = 10;
+
+export interface ITraceDocument {
+    lineCount: number;
+    offsetAt(position: vscode.Position): number;
+    positionAt(offset: number): vscode.Position;
+    lineAt(line: number): { range: { end: vscode.Position }, text: string };
+    getText(range?: vscode.Range): string;
+}
 
 
 export interface TracePoint {
