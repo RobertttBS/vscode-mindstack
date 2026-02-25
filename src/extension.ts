@@ -237,6 +237,7 @@ export function activate(context: vscode.ExtensionContext) {
     let lastFocusedTraceId: string | undefined;
     let debounceTimer: ReturnType<typeof setTimeout> | undefined;
     let syncDebounce: ReturnType<typeof setTimeout> | undefined;
+    let pendingFocusId: string | undefined;
 
     context.subscriptions.push(
         vscode.window.onDidChangeTextEditorSelection((event) => {
@@ -278,7 +279,6 @@ export function activate(context: vscode.ExtensionContext) {
     );
 
     // Listen for trace changes from validation/updates (UI Sync)
-    const syncPendingFocusIds: string[] = [];
     context.subscriptions.push(
         traceManager.onDidChangeTraces((eventPayload) => {
             for (const editor of vscode.window.visibleTextEditors) {
@@ -289,17 +289,15 @@ export function activate(context: vscode.ExtensionContext) {
                 ? eventPayload.focusId
                 : undefined;
             if (focusId) {
-                syncPendingFocusIds.push(focusId);
+                pendingFocusId = focusId;
             }
 
             // Sync with webview (Debounced to prevent flooding during rapid typing/validation)
             if (syncDebounce) { clearTimeout(syncDebounce); }
             syncDebounce = setTimeout(() => {
-                const latestFocusId = syncPendingFocusIds.pop();
-                syncPendingFocusIds.length = 0; // Clear the rest
-
-                const payload = { ...traceManager.getWorkspaceSyncPayload(), focusId: latestFocusId };
+                const payload = { ...traceManager.getWorkspaceSyncPayload(), focusId: pendingFocusId };
                 provider.postMessage({ type: 'syncWorkspace', payload });
+                pendingFocusId = undefined; // Reset after sending
             }, 50);
         })
     );
@@ -311,7 +309,7 @@ export function activate(context: vscode.ExtensionContext) {
             if (decorationDebounce) { clearTimeout(decorationDebounce); }
             if (debounceTimer) { clearTimeout(debounceTimer); }
             if (syncDebounce) { clearTimeout(syncDebounce); }
-            syncPendingFocusIds.length = 0;
+            pendingFocusId = undefined;
         },
     });
 
