@@ -434,6 +434,7 @@ export class TraceManager implements vscode.Disposable {
             lang: 'plaintext',
             note: '',
             timestamp: Date.now(),
+            orphaned: false,
         };
 
         // Add to the store WITHOUT firing the generic event
@@ -1070,13 +1071,14 @@ export class TraceManager implements vscode.Disposable {
 
     private async validateAndRecover(trace: TracePoint, background: boolean = false): Promise<TracePoint | null> {
         try {
+            if (!trace.filePath) {
+                // It's an empty trace/note, so it inherently doesn't have a file. It is not orphaned.
+                trace.orphaned = false;
+                return trace;
+            }
+
             try {
-                if (trace.filePath) {
-                    await vscode.workspace.fs.stat(vscode.Uri.file(trace.filePath));
-                } else {
-                    trace.orphaned = true;
-                    return trace;
-                }
+                await vscode.workspace.fs.stat(vscode.Uri.file(trace.filePath));
             } catch {
                 console.warn('Trace validation skipped missing file:', trace.filePath);
                 trace.orphaned = true;
