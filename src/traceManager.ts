@@ -950,72 +950,82 @@ export class TraceManager implements vscode.Disposable {
         const rootTraces: TracePoint[] = [];
         const stack: { trace: TracePoint, depth: number }[] = [];
 
-        let currentTrace: Partial<TracePoint> | null = null;
+        let currentTrace: (Partial<TracePoint> & { _tempDepth: number }) | null = null;
         let currentContent: string[] = [];
         let capturingContent = false;
 
         const headerRegex = /^(#+)\s+\d+\.\s+(.*)/;
         const codeBlockStartRegex = /^```(\w*)\s+(\d+|\?):(\d+|\?):(.+)$/;
 
+        const flushCurrentTrace = async () => {
+            if (!currentTrace) return;
+
+            if (capturingContent) {
+                currentTrace.content = currentContent.join('\n');
+                currentContent = [];
+                capturingContent = false;
+            } else if (currentTrace.content === undefined) {
+                // Headings without code blocks get empty content
+                currentTrace.content = '';
+                currentTrace.lang = 'plaintext';
+                currentTrace.filePath = '';
+                currentTrace.lineRange = [0, 0];
+            }
+
+            const validated = await this.validateAndRecover(currentTrace as TracePoint);
+            if (validated) {
+                const trace = validated;
+                while (stack.length > 0 && stack[stack.length - 1].depth >= currentTrace._tempDepth) {
+                    stack.pop();
+                }
+
+                if (stack.length > 0) {
+                    const parent = stack[stack.length - 1].trace;
+                    if (!parent.children) parent.children = [];
+                    parent.children.push(trace);
+                } else {
+                    rootTraces.push(trace);
+                }
+
+                stack.push({ trace, depth: currentTrace._tempDepth });
+            }
+            currentTrace = null;
+        };
+
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
 
-            // Skip horizontal rules outside of code blocks
             if (!capturingContent && line.trim().startsWith('---')) {
                 continue;
             }
 
-            if (line.startsWith('```') && !capturingContent) {
-                const match = line.match(codeBlockStartRegex);
-                if (match && currentTrace) {
-                    capturingContent = true;
-                    currentTrace.lang = match[1];
-                    const startLine = match[2] === '?' ? 0 : parseInt(match[2]) - 1;
-                    const endLine = match[3] === '?' ? 0 : parseInt(match[3]) - 1;
-                    const filePath = match[4].trim();
-                    if (path.isAbsolute(filePath)) {
-                        currentTrace.filePath = filePath;
-                    } else {
-                        const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-                        if (workspaceFolder) {
-                            currentTrace.filePath = vscode.Uri.joinPath(workspaceFolder.uri, filePath).fsPath;
-                        } else {
+            if (line.startsWith('```')) {
+                if (!capturingContent) {
+                    const match = line.match(codeBlockStartRegex);
+                    if (match && currentTrace) {
+                        capturingContent = true;
+                        currentTrace.lang = match[1];
+                        const startLine = match[2] === '?' ? 0 : parseInt(match[2]) - 1;
+                        const endLine = match[3] === '?' ? 0 : parseInt(match[3]) - 1;
+                        const filePath = match[4].trim();
+                        if (path.isAbsolute(filePath)) {
                             currentTrace.filePath = filePath;
-                        }
-                    }
-                    currentTrace.lineRange = [startLine, endLine];
-                }
-                continue;
-            }
-
-            if (line.startsWith('```') && capturingContent) {
-                capturingContent = false;
-                if (currentTrace) {
-                    currentTrace.content = currentContent.join('\n');
-                    currentContent = [];
-
-                    const validated = await this.validateAndRecover(currentTrace as TracePoint);
-                    if (validated) {
-                        const trace = validated;
-
-                        while (stack.length > 0 && stack[stack.length - 1].depth >= (currentTrace as any)._tempDepth) {
-                            stack.pop();
-                        }
-
-                        if (stack.length > 0) {
-                            const parent = stack[stack.length - 1].trace;
-                            if (!parent.children) parent.children = [];
-                            parent.children.push(trace);
                         } else {
-                            rootTraces.push(trace);
+                            const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+                            if (workspaceFolder) {
+                                currentTrace.filePath = vscode.Uri.joinPath(workspaceFolder.uri, filePath).fsPath;
+                            } else {
+                                currentTrace.filePath = filePath;
+                            }
                         }
-
-                        stack.push({ trace, depth: (currentTrace as any)._tempDepth });
+                        currentTrace.lineRange = [startLine, endLine];
+                        continue;
                     }
-
-                    currentTrace = null;
+                } else {
+                    // Ending code block
+                    await flushCurrentTrace();
+                    continue;
                 }
-                continue;
             }
 
             if (capturingContent) {
@@ -1025,43 +1035,54 @@ export class TraceManager implements vscode.Disposable {
 
             const headerMatch = line.match(headerRegex);
             if (headerMatch) {
+                await flushCurrentTrace();
+
                 const hashes = headerMatch[1];
                 const rawTitle = headerMatch[2].trim();
-
                 const depth = hashes.length - 2;
                 if (depth < 0) continue;
 
                 let title = rawTitle;
-                let isOrphaned = false;
                 if (title.endsWith('(Orphaned)')) {
                     title = title.replace('(Orphaned)', '').trim();
                 }
 
                 currentTrace = {
-                    id: crypto.randomUUID(),
+                    id: generateIsomorphicUUID(),
                     note: title,
-                    orphaned: isOrphaned,
+                    orphaned: false,
                     children: [],
-                    _tempDepth: depth
+                    _tempDepth: depth,
+                    timestamp: Date.now()
                 } as any;
-
             } else if (currentTrace && line.trim().length > 0) {
-                currentTrace.note += '\n' + line;
+                if (currentTrace.note && !currentTrace.note.endsWith('\n')) {
+                    currentTrace.note += '\n';
+                }
+                currentTrace.note += line;
             }
         }
 
+        await flushCurrentTrace();
         return rootTraces;
     }
+
 
     private async validateAndRecover(trace: TracePoint, background: boolean = false): Promise<TracePoint | null> {
         try {
             try {
-                await vscode.workspace.fs.stat(vscode.Uri.file(trace.filePath));
+                if (trace.filePath) {
+                    await vscode.workspace.fs.stat(vscode.Uri.file(trace.filePath));
+                } else {
+                    trace.orphaned = true;
+                    return trace;
+                }
             } catch {
                 console.warn('Trace validation skipped missing file:', trace.filePath);
                 trace.orphaned = true;
-                return null;
+                return trace;
             }
+
 
             const uri = vscode.Uri.file(trace.filePath);
             let docAdapter: ITraceDocument | undefined = vscode.workspace.textDocuments.find(d => d.uri.toString() === uri.toString());

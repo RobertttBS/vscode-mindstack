@@ -29,10 +29,12 @@ function renderTrace(t: TracePoint, index: number, depth: number): string {
         }
     }
     
-    const endLine = t.lineRange ? t.lineRange[1] + 1 : '?';
-    md += '```' + t.lang + ` ${startLine}:${endLine}:${relativePath}` + '\n';
-    md += t.content + '\n';
-    md += '```\n\n';
+    if (t.content.trim()) {
+        const endLine = t.lineRange ? t.lineRange[1] + 1 : '?';
+        md += '```' + t.lang + ` ${startLine}:${endLine}:${relativePath}` + '\n';
+        md += t.content + '\n';
+        md += '```\n\n';
+    }
 
     if (t.children?.length) {
         t.children.forEach((child, i) => {
