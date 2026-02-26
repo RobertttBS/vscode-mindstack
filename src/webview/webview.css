@@ -16,8 +16,6 @@
   margin: -8px -8px 12px;
 }
 
-
-
 /* ---- Empty State ---- */
 .empty-state {
   display: flex;
@@ -38,6 +36,16 @@
   font-size: 12px;
   margin-top: 8px;
   line-height: 1.5;
+}
+
+kbd {
+  background: var(--vscode-badge-background, #4d4d4d);
+  color: var(--vscode-badge-foreground, #fff);
+  border-radius: 3px;
+  padding: 1px 4px;
+  font-size: 10px;
+  font-family: inherit;
+  font-weight: 600;
 }
 
 /* ---- Trace Card ---- */

@@ -440,8 +440,8 @@ const Storyboard: React.FC = () => {
                     <div className="empty-icon">📌</div>
                     <p>{currentGroupId ? 'No child traces yet.' : 'No traces yet.'}</p>
                     <p className="empty-hint">
-                        Select some code and run<br />
-                        <strong>TraceNotes: Collect Trace</strong>
+                        Select some code and press <kbd>Alt+C</kbd> (or <kbd>Opt+C</kbd>) <br />
+                        or run <strong>TraceNotes: Collect Trace</strong>
                     </p>
                 </div>
             </div>
