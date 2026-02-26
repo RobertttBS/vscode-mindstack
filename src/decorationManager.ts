@@ -28,7 +28,7 @@ export function initDecorations(context: vscode.ExtensionContext): void {
     });
 
     fadedDecorationType = vscode.window.createTextEditorDecorationType({
-        gutterIconPath: getGutterIconUri('#525252ff'), // dark grey
+        gutterIconPath: getGutterIconUri('#52525266'), // dark grey
         gutterIconSize: 'contain',
         isWholeLine: true,
         backgroundColor: 'rgba(100, 100, 100, 0.02)', // very subtle grey tint

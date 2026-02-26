@@ -1,8 +1,13 @@
 import React from 'react';
 
 export const ExportIcon = () => (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-        <path d="M13.5 12h-11v1h11v-1zm-5.5-9v5.293L5.854 6.146l-.708.708L8.5 10.207l3.354-3.353-.708-.708L9 8.293V3h-1z" />
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+        {/* The horizontal "tray" at the bottom */}
+        <path d="M2 14.5h12" />
+        {/* The vertical arrow stem */}
+        <path d="M8 1v10" />
+        {/* The arrow head */}
+        <path d="M4 7l4 4 4-4" />
     </svg>
 );
 

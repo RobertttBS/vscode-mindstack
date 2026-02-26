@@ -81,7 +81,7 @@ kbd {
 .card-header {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
   padding: 6px 8px;
   background: var(--vscode-sideBarSectionHeader-background, #252526);
   cursor: pointer;
@@ -125,14 +125,18 @@ kbd {
 
 .card-remove {
   background: none;
-  border: none;
+  border: 1px solid transparent;
   color: var(--vscode-foreground);
   opacity: 0.4;
   cursor: pointer;
   font-size: 12px;
-  padding: 2px 4px;
+  padding: 2px 8px;
   border-radius: 3px;
   flex-shrink: 0;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    opacity 0.15s ease;
 }
 
 .card-remove:hover {
@@ -237,8 +241,8 @@ kbd {
   background: none;
   border: 1px solid var(--vscode-panel-border, #555);
   color: var(--vscode-textLink-foreground, #3794ff);
-  font-size: 10px;
-  padding: 1px 6px;
+  font-size: 12px;
+  padding: 2px 8px;
   border-radius: 3px;
   cursor: pointer;
   flex-shrink: 0;
@@ -262,11 +266,10 @@ kbd {
   background: none;
   border: 1px solid var(--vscode-testing-iconPassed, #73c991);
   color: var(--vscode-testing-iconPassed, #73c991);
-  font-size: 11px;
-  padding: 1px 4px;
+  font-size: 12px;
+  padding: 1px 8px 3px 8px;
   border-radius: 3px;
   cursor: pointer;
-  margin-right: 4px;
 }
 
 .relocate-confirm-btn:hover {
@@ -278,11 +281,10 @@ kbd {
   background: none;
   border: 1px solid var(--vscode-testing-iconFailed, #f14c4c);
   color: var(--vscode-testing-iconFailed, #f14c4c);
-  font-size: 11px;
-  padding: 1px 4px;
+  font-size: 12px;
+  padding: 1px 8px 3px 8px;
   border-radius: 3px;
   cursor: pointer;
-  margin-right: 2px;
 }
 
 .relocate-cancel-btn:hover {
@@ -300,8 +302,8 @@ kbd {
   background: none;
   border: 1px solid transparent;
   color: var(--vscode-foreground);
-  font-size: 11px;
-  padding: 1px 4px;
+  font-size: 12px;
+  padding: 1px 8px 3px 8px;
   border-radius: 3px;
   cursor: pointer;
   flex-shrink: 0;
@@ -310,12 +312,11 @@ kbd {
     border-color 0.15s ease,
     opacity 0.15s ease;
   opacity: 0.6;
-  margin-right: 2px;
 }
 
 .relocate-btn:hover {
   opacity: 1;
-  background: var(--vscode-list-hoverBackground, #2a2d2e);
+  background: rgba(128, 128, 128, 0.2);
   border-color: var(--vscode-panel-border, #555);
   color: var(--vscode-textLink-foreground, #3794ff);
 }
@@ -333,8 +334,8 @@ kbd {
 /* ---- Toolbar Button Base ---- */
 .toolbar-btn {
   background: none;
-  border: none;
-  padding: 4px;
+  border: 1px solid transparent;
+  padding: 6px;
   border-radius: 4px;
   cursor: pointer;
   display: flex;
@@ -343,8 +344,10 @@ kbd {
   opacity: 0.8;
   transition:
     background 0.15s ease,
+    border-color 0.15s ease,
     opacity 0.15s ease;
 }
+
 
 .toolbar-btn:hover {
   background: var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, 0.31));
@@ -479,7 +482,7 @@ kbd {
 }
 
 .highlight-active .trace-card {
-  border: 2px solid var(--vscode-focusBorder, #c1c1c1) !important;
+  border: 3px solid var(--vscode-focusBorder, #c1c1c1) !important;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
