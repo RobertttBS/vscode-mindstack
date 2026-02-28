@@ -410,14 +410,18 @@ export class TraceManager implements vscode.Disposable {
     }
 
     private addTraceToIndex(trace: TracePoint, parentId: string | null): void {
-        const uriStr = vscode.Uri.file(trace.filePath).toString();
-        
-        let set = this.traceIndex.get(uriStr);
-        if (!set) {
-            set = new Set();
-            this.traceIndex.set(uriStr, set);
+        try {
+            const uriStr = trace.filePath ? vscode.Uri.file(trace.filePath).toString() : 'orphaned://trace';
+            
+            let set = this.traceIndex.get(uriStr);
+            if (!set) {
+                set = new Set();
+                this.traceIndex.set(uriStr, set);
+            }
+            set.add(trace);
+        } catch (e) {
+            console.warn(`Failed to index trace ${trace.id} with path ${trace.filePath}:`, e);
         }
-        set.add(trace);
         
         this.traceIdMap.set(trace.id, trace);
         this.parentIdMap.set(trace.id, parentId);
@@ -1274,6 +1278,7 @@ export class TraceManager implements vscode.Disposable {
             } catch {
                 console.warn('Trace validation skipped missing file:', trace.filePath);
                 trace.orphaned = true;
+                if (!trace.rangeOffset) { trace.rangeOffset = [0, 0]; }
                 return trace;
             }
 
@@ -1383,11 +1388,13 @@ export class TraceManager implements vscode.Disposable {
                 return trace;
             } else {
                 trace.orphaned = true;
+                if (!trace.rangeOffset) { trace.rangeOffset = [0, 0]; }
                 return trace;
             }
         } catch (e) {
             console.warn('Trace import error:', e);
             trace.orphaned = true;
+            if (!trace.rangeOffset) { trace.rangeOffset = [0, 0]; }
             return trace;
         }
     }
