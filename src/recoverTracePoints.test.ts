@@ -167,6 +167,122 @@ async function runTests() {
         assert.strictEqual(res, null, "Should NOT recover if brackets/braces are missing");
     });
 
+    await test("Should recover when function is pasted elsewhere in the same file (moved down)", async () => {
+        const storedContent = `function calculate() {\n    let a = 1;\n    let b = 2;\n    return a + b;\n}`;
+        const newDocContent = "\n".repeat(50) + storedContent;
+        const doc = new MockDocument(newDocContent);
+        const uri = mockVscode.Uri.file('/workspace/src/file.ts');
+        
+        const res = await recoverTracePoints(doc, storedContent, 0, uri);
+        assert.ok(res !== null, "Should return a result");
+        assert.strictEqual(res!.uri.fsPath, uri.fsPath, "Should stay in the same file");
+        assert.ok(res!.offset[0] > 0, "Start offset should be dynamically adjusted");
+    });
+
+    await test("Should recover when middle line is deleted", async () => {
+        const storedContent = `function calculate() {\n    let a = 1;\n    let b = 2;\n    return a + b;\n}`;
+        const newDocContent = `function calculate() {\n    let a = 1;\n    return a + b;\n}`;
+        const doc = new MockDocument(newDocContent);
+        const uri = mockVscode.Uri.file('/workspace/src/file.ts');
+        
+        const res = await recoverTracePoints(doc, storedContent, 0, uri);
+        assert.ok(res !== null, "Should recover even when middle line is deleted");
+        assert.strictEqual(res!.offset[0], 0, "Start offset should be 0");
+        assert.ok(res!.offset[1] > 0, "End offset is set");
+    });
+
+    await test("Should recover when extra lines are added inside", async () => {
+        const storedContent = `function calculate() {\n    let a = 1;\n    let b = 2;\n    return a + b;\n}`;
+        const newDocContent = `function calculate() {\n    let a = 1;\n    console.log("added");\n    let b = 2;\n    return a + b;\n}`;
+        const doc = new MockDocument(newDocContent);
+        const uri = mockVscode.Uri.file('/workspace/src/file.ts');
+        
+        const res = await recoverTracePoints(doc, storedContent, 0, uri);
+        assert.ok(res !== null, "Should recover when lines are added");
+        assert.strictEqual(res!.offset[0], 0, "Start offset should be 0");
+        assert.ok(res!.offset[1] > 0, "End offset is set");
+    });
+
+    await test("Should recover when comments are inserted (tokenizer ignores them)", async () => {
+        const storedContent = `function calculate() {\n    let a = 1;\n    return a + b;\n}`;
+        const newDocContent = `function calculate() {\n    // comment\n    let a = 1;\n    /* block */\n    return a + b;\n}`;
+        const doc = new MockDocument(newDocContent);
+        const uri = mockVscode.Uri.file('/workspace/src/file.ts');
+        
+        const res = await recoverTracePoints(doc, storedContent, 0, uri);
+        assert.ok(res !== null, "Should recover ignoring comments");
+        assert.strictEqual(res!.offset[0], 0, "Start offset should be 0");
+    });
+
+    await test("Should recover when words change (fuzzy match)", async () => {
+        const storedContent = `function calculate() {\n    let a = 1;\n    let b = 2;\n    return a + b;\n}`;
+        const newDocContent = `function calc() {\n    let x = 1;\n    let b = 2;\n    return x + b;\n}`;
+        const doc = new MockDocument(newDocContent);
+        const uri = mockVscode.Uri.file('/workspace/src/file.ts');
+        
+        const res = await recoverTracePoints(doc, storedContent, 0, uri);
+        assert.ok(res !== null, "Should recover with fuzzy match");
+        assert.strictEqual(res!.offset[0], 0, "Start offset should be 0");
+    });
+
+    await test("Should recover completely identical code moved up", async () => {
+        const storedContent = `function calculate() {\n    let a = 1;\n    let b = 2;\n    return a + b;\n}`;
+        const newDocContent = storedContent + "\n".repeat(50) + "// original location";
+        const doc = new MockDocument(newDocContent);
+        const uri = mockVscode.Uri.file('/workspace/src/file.ts');
+        
+        // original start was at line 50.
+        const res = await recoverTracePoints(doc, storedContent, 1000, uri);
+        assert.ok(res !== null, "Should return a result");
+        assert.strictEqual(res!.offset[0], 0, "Start offset should dynamically adjust to 0");
+    });
+
+    await test("Should match the closest block when duplicates exist", async () => {
+        const storedContent = `function calculate() {\n    return 42;\n}`;
+        // Put one duplicate at start, one at end. Target is at offset 500.
+        const newDocContent = storedContent + " ".repeat(1000) + storedContent;
+        const doc = new MockDocument(newDocContent);
+        const uri = mockVscode.Uri.file('/workspace/src/file.ts');
+        
+        // Target is at 1000 + length
+        const expectedStart = newDocContent.lastIndexOf("function calculate");
+        const res = await recoverTracePoints(doc, storedContent, expectedStart + 10, uri);
+        
+        assert.ok(res !== null, "Should return a result");
+        assert.strictEqual(res!.offset[0], expectedStart, "Start offset should match the closest identical block");
+    });
+
+    await test("Should recover when purely indentation is changed", async () => {
+        const storedContent = `function calculate() {\n    let a = 1;\n    let b = 2;\n    return a + b;\n}`;
+        const newDocContent = `function calculate() {\n\t\tlet a = 1;\n\t\tlet b = 2;\n\t\treturn a + b;\n}`; // using tabs
+        const doc = new MockDocument(newDocContent);
+        const uri = mockVscode.Uri.file('/workspace/src/file.ts');
+        
+        const res = await recoverTracePoints(doc, storedContent, 0, uri);
+        assert.ok(res !== null, "Should recover indentation changes");
+    });
+
+    await test("Should not recover completely unrelated code", async () => {
+        const storedContent = `function process() { let x = 1; let y = 2; return x + y; }`;
+        const newDocContent = `function unrelated() { console.log('hello window'); return true; }`;
+        const doc = new MockDocument(newDocContent);
+        const uri = mockVscode.Uri.file('/workspace/src/file.ts');
+        
+        const res = await recoverTracePoints(doc, storedContent, 0, uri);
+        assert.strictEqual(res, null, "Should not recover completely unrelated code");
+    });
+
+    await test("Should recover when formatting is radically changed", async () => {
+        const storedContent = `function calculate() {\n    let a = 1;\n    let b = 2;\n    return a + b;\n}`;
+        const newDocContent = `function calculate(){let a=1;let b=2;return a+b;}`;
+        const doc = new MockDocument(newDocContent);
+        const uri = mockVscode.Uri.file('/workspace/src/file.ts');
+        
+        const res = await recoverTracePoints(doc, storedContent, 0, uri);
+        assert.ok(res !== null, "Should recover formatting changes");
+        assert.strictEqual(res!.offset[0], 0, "Start offset should be 0");
+    });
+
     console.log(`\nResults: ${passed} passed, ${failed} failed`);
     if (failed > 0) {
         process.exit(1);

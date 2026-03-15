@@ -12,6 +12,12 @@ export interface ITraceDocument {
     getText(range?: vscode.Range): string;
 }
 
+export interface Token {
+    text: string;
+    offset: number;
+    type: 'code' | 'string' | 'comment';
+}
+
 export class TraceManager implements vscode.Disposable {
     private static readonly SEARCH_RADIUS = 5000;
     private static readonly VALIDATION_BUDGET_MS = 15;
@@ -1011,11 +1017,10 @@ export class TraceManager implements vscode.Disposable {
     }
 
     /**
-     * 4-Tier Optimized Recovery Logic
+     * 3-Tier Optimized Recovery Logic
      * Tier 1: Exact Match (Radius Bound)
-     * Tier 2: Regex Anchor Match with Proximity Preference (Radius Bound)
-     * Tier 3: Token-based Sliding Window (Elastic Radius Bound)
-     * Tier 4: Workspace-wide fallback for identical file extensions (Cross-file)
+     * Tier 2: Token-based Sliding Window (Elastic Radius Bound)
+     * Tier 3: Workspace-wide fallback for identical file extensions (Cross-file)
      */
     private async recoverTracePoints(
         document: ITraceDocument,
@@ -1036,55 +1041,25 @@ export class TraceManager implements vscode.Disposable {
         // ==========================================
         // TIER 1: Exact Match in Radius (Fastest)
         // ==========================================
-        const localIdx = searchArea.indexOf(cleanContent);
-        if (localIdx >= 0) {
-            const start = searchStart + localIdx;
-            return { offset: [start, start + cleanContent.length], uri: originalUri };
+        let bestExactStart = -1;
+        let bestExactDistance = Infinity;
+        let currentIdx = searchArea.indexOf(cleanContent);
+        while (currentIdx >= 0) {
+            const absoluteStart = searchStart + currentIdx;
+            const dist = Math.abs(absoluteStart - lastKnownStart);
+            if (dist < bestExactDistance) {
+                bestExactDistance = dist;
+                bestExactStart = absoluteStart;
+            }
+            currentIdx = searchArea.indexOf(cleanContent, currentIdx + 1);
+        }
+
+        if (bestExactStart >= 0) {
+            return { offset: [bestExactStart, bestExactStart + cleanContent.length], uri: originalUri };
         }
 
         // ==========================================
-        // TIER 2: Regex-based Anchor Matching
-        // ==========================================
-        const lines = cleanContent.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
-        
-        if (lines.length >= 2) {
-            const headRegexStr = this.escapeRegExp(lines[0]);
-            const tailRegexStr = this.escapeRegExp(lines[lines.length - 1]);
-            
-            const headRegex = new RegExp(headRegexStr, 'g');
-            const tailRegex = new RegExp(tailRegexStr, 'g');
-            
-            let bestPair: [number, number] | null = null;
-            let minDistance = Infinity;
-
-            let headMatch;
-            // Find ALL heads in the search area to resolve collisions
-            while ((headMatch = headRegex.exec(searchArea)) !== null) {
-                const headStart = searchStart + headMatch.index;
-                
-                // Look for the tail anchor after THIS specific head match
-                tailRegex.lastIndex = headMatch.index + headMatch[0].length;
-                let tailMatch = tailRegex.exec(searchArea);
-                
-                if (tailMatch) {
-                    const tailEnd = searchStart + tailMatch.index + tailMatch[0].length;
-                    const distanceToOrigin = Math.abs(headStart - lastKnownStart);
-                    
-                    // Collision Handling: Proximity Preference
-                    if (distanceToOrigin < minDistance) {
-                        minDistance = distanceToOrigin;
-                        bestPair = [headStart, tailEnd];
-                    }
-                }
-            }
-
-            if (bestPair) {
-                return { offset: bestPair, uri: originalUri };
-            }
-        }
-
-        // ==========================================
-        // TIER 3: Token Extraction & Sliding Window
+        // TIER 2: Token Extraction & Sliding Window
         // ==========================================
         // Elastic Boundary restricts the ultimate fallback to SEARCH_RADIUS * 2
         const elasticRadius = radius * 2;
@@ -1092,26 +1067,26 @@ export class TraceManager implements vscode.Disposable {
         const elasticEnd = Math.min(fullText.length, lastKnownStart + elasticRadius + cleanContent.length);
         const elasticArea = fullText.slice(elasticStart, elasticEnd);
 
-        const tier3Offset = this.slidingWindowTokenSearch(elasticArea, elasticStart, cleanContent);
+        const tier2Offset = this.slidingWindowTokenSearch(elasticArea, elasticStart, cleanContent);
         
-        if (tier3Offset) {
+        if (tier2Offset) {
             // FIX: Use the expanded bounding validation instead of strict string equality
-            const validatedOffset = this.validateAndExpandTokenBounds(fullText, tier3Offset, cleanContent);
+            const validatedOffset = this.fuzzyValidateBounds(fullText, tier2Offset, cleanContent);
             if (validatedOffset) {
                 return { offset: validatedOffset, uri: originalUri };
             } else {
-                console.warn('Tier 3 found a token match, but boundary validation failed. Moving to Tier 4.');
+                console.warn('Tier 2 found a token match, but boundary validation failed. Moving to Tier 3.');
             }
         }
 
         // ==========================================
-        // TIER 4: Cross-File Workspace Search
+        // TIER 3: Cross-File Workspace Search
         // ==========================================
         return await this.searchAcrossWorkspace(originalUri, cleanContent, token);
     }
 
     /**
-     * Tier 4 Helper: Searches all files in the workspace with the same extension.
+     * Tier 3 Helper: Searches all files in the workspace with the same extension.
      */
     private async searchAcrossWorkspace(
         originalUri: vscode.Uri, 
@@ -1153,18 +1128,18 @@ export class TraceManager implements vscode.Disposable {
                         return { offset: [exactIdx, exactIdx + cleanContent.length] as [number, number], uri };
                     }
 
-                    // Run Tier 3 (Sliding Window Fallback)
+                    // Run Tier 2 (Sliding Window Fallback)
                     const offset = this.slidingWindowTokenSearch(text, 0, cleanContent);
                     if (offset) {
                         // FIX 2: Validate by expanding the search area to account for 
                         // stripped punctuation and comments at the boundaries.
-                        const expandedOffset = this.validateAndExpandTokenBounds(text, offset, cleanContent);
+                        const expandedOffset = this.fuzzyValidateBounds(text, offset, cleanContent);
                         if (expandedOffset) {
                             return { offset: expandedOffset, uri };
                         }
                     }
                 } catch (err) {
-                    console.error(`Tier 4: Failed to read ${uri.fsPath}`, err);
+                    console.error(`Tier 3: Failed to read ${uri.fsPath}`, err);
                 }
                 return null;
             }));
@@ -1181,55 +1156,88 @@ export class TraceManager implements vscode.Disposable {
     }
 
     /**
-     * Helper to validate fuzzy token bounds.
-     * Expands the token window outwards to see if the exact clean content 
-     * sits neatly over the area, accounting for stripped boundary punctuation.
+     * Replaces validateAndExpandTokenBounds.
+     * Uses a sliding window over the raw text to find the best fuzzy match
+     * based on Levenshtein distance, allowing for actual code mutations.
      */
-    private validateAndExpandTokenBounds(
-        fullText: string, 
-        tokenBounds: [number, number], 
+    private fuzzyValidateBounds(
+        fullText: string,
+        tokenBounds: [number, number],
         cleanContent: string
     ): [number, number] | null {
-        // Expand the validation window by the length of the clean content to ensure
-        // we capture leading/trailing comments or brackets that the lexer stripped.
-        const buffer = cleanContent.length; 
-        const start = Math.max(0, tokenBounds[0] - buffer);
-        const end = Math.min(fullText.length, tokenBounds[1] + buffer);
-        
-        const localArea = fullText.substring(start, end);
+        // Expand window to account for added/removed code inside the trace
+        // 50% buffer on lengths
+        const buffer = Math.max(100, Math.floor(cleanContent.length * 0.5));
+        const searchStart = Math.max(0, tokenBounds[0] - buffer);
+        const searchEnd = Math.min(fullText.length, tokenBounds[1] + buffer);
+        const localArea = fullText.substring(searchStart, searchEnd);
 
-        let cleanIdx = 0;
-        let startMatch = -1;
-        
-        for (let i = 0; i < localArea.length; i++) {
-            if (/[ \t\r\n\f\v]/.test(localArea[i])) continue;
-            
-            while (cleanIdx < cleanContent.length && /[ \t\r\n\f\v]/.test(cleanContent[cleanIdx])) {
-                cleanIdx++;
-            }
-            
-            if (cleanIdx < cleanContent.length && localArea[i] === cleanContent[cleanIdx]) {
-                if (startMatch === -1) startMatch = i;
-                cleanIdx++;
+        // Extract code/string tokens from cleanContent
+        const targetTokens = this.tokenize(cleanContent)
+            .filter(t => t.type !== 'comment');
+
+        if (targetTokens.length === 0) return tokenBounds; // Fallback for whitespace-only traces
+
+        // Extract tokens from localArea
+        const searchTokens = this.tokenize(localArea)
+            .filter(t => t.type !== 'comment');
+
+        if (searchTokens.length === 0) return null;
+
+        let bestDistance = Infinity;
+        let bestStart = -1;
+        let bestEnd = -1;
+
+        // Bounded length search helps early break
+        const minLength = Math.max(1, Math.floor(targetTokens.length * 0.5));
+        const maxLength = Math.floor(targetTokens.length * 2.0);
+
+        // O(T^2) Sliding Window Levenshtein on Tokens
+        for (let i = 0; i < searchTokens.length; i++) {
+            let dp = new Array(targetTokens.length + 1);
+            for (let j = 0; j <= targetTokens.length; j++) dp[j] = j;
+
+            for (let len = 1; len <= searchTokens.length - i; len++) {
+                if (len > maxLength) break;
                 
-                while (cleanIdx < cleanContent.length && /[ \t\r\n\f\v]/.test(cleanContent[cleanIdx])) {
-                    cleanIdx++;
+                const candidateToken = searchTokens[i + len - 1].text;
+                let previousDiagonal = dp[0];
+                dp[0] = len;
+                
+                for (let j = 1; j <= targetTokens.length; j++) {
+                    let temp = dp[j];
+                    if (targetTokens[j - 1].text === candidateToken) {
+                        dp[j] = previousDiagonal;
+                    } else {
+                        dp[j] = Math.min(
+                            previousDiagonal + 1, // substitution
+                            dp[j] + 1,            // insertion
+                            dp[j - 1] + 1         // deletion
+                        );
+                    }
+                    previousDiagonal = temp;
                 }
 
-                if (cleanIdx === cleanContent.length) {
-                    const exactStart = start + startMatch;
-                    return [exactStart, start + i + 1];
-                }
-            } else {
-                if (startMatch !== -1) {
-                    i = startMatch; 
-                    startMatch = -1;
-                    cleanIdx = 0;
+                if (len >= minLength) {
+                    const distance = dp[targetTokens.length];
+                    if (distance < bestDistance) {
+                        bestDistance = distance;
+                        bestStart = searchTokens[i].offset + searchStart;
+                        const endToken = searchTokens[i + len - 1];
+                        bestEnd = endToken.offset + endToken.text.length + searchStart;
+                    }
                 }
             }
         }
 
-        return null; 
+        // Acceptance threshold: 40% maximum mutation
+        // For very small traces, give a strict minimum of 2 tokens variance allowance
+        const maxAllowedDistance = Math.max(2, Math.floor(targetTokens.length * 0.4));
+        if (bestDistance <= maxAllowedDistance && bestStart !== -1) {
+            return [bestStart, bestEnd];
+        }
+
+        return null; // Mutation was too severe
     }
 
     /**
@@ -1237,20 +1245,18 @@ export class TraceManager implements vscode.Disposable {
      * Strips // comments, /* *\/ comments, and string literals.
      * Extracts identifiers, keywords, AND numeric literals.
      */
-    private tokenize(text: string): { text: string, offset: number }[] {
-        // Match 1: Block comments
-        // Match 2: Line comments
-        // Match 3-5: String literals (Double, Single, Backtick)
-        // Capture Group 1: Identifiers / Keywords OR Numeric literals (\b\d+\b)
-        // Added \b\d+\b so we don't lose numbers in expressions like "return 42;"
-        const tokenRegex = /\/\*[\s\S]*?\*\/|\/\/[^\r\n]*|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`|([a-zA-Z_$][a-zA-Z0-9_$]*|#\w+|::|->|[*&]|\b\d+\b)/g;
-        
-        const tokens: { text: string, offset: number }[] = [];
+    private tokenize(text: string): Token[] {
+        const tokenRegex = /(\/\*[\s\S]*?\*\/)|(\/\/[^\r\n]*)|("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`)|([a-zA-Z_$][a-zA-Z0-9_$]*|#\w+|::|->|[*&]|\b\d+\b|[{}()\[\];,.=+\-*/<>!?:|~^%])/g;
+        const tokens: Token[] = [];
         let match;
         
         while ((match = tokenRegex.exec(text)) !== null) {
-            if (match[1]) {
-                tokens.push({ text: match[1], offset: match.index });
+            if (match[1] || match[2]) {
+                tokens.push({ text: match[0], offset: match.index, type: 'comment' });
+            } else if (match[3]) {
+                tokens.push({ text: match[0], offset: match.index, type: 'string' });
+            } else if (match[4]) {
+                tokens.push({ text: match[4], offset: match.index, type: 'code' });
             }
         }
         
@@ -1268,45 +1274,53 @@ export class TraceManager implements vscode.Disposable {
         const sourceTokens = this.tokenize(elasticArea);
         if (sourceTokens.length === 0) return null;
 
+        const targetFreq = new Map<string, number>();
+        for (const t of targetTokens) {
+            targetFreq.set(t, (targetFreq.get(t) || 0) + 1);
+        }
+
         let maxMatches = 0;
         let minWindowLength = Infinity;
         let bestWindow: [number, number] | null = null;
+        
+        // Dynamic window size: large enough to allow insertions, bounded to prevent massive overlap
+        const maxWindowSize = Math.min(targetTokens.length * 2 + 10, sourceTokens.length);
 
         for (let i = 0; i < sourceTokens.length; i++) {
-            // Early-exit: remaining source tokens can't beat the current best score.
-            if (sourceTokens.length - i <= maxMatches && maxMatches > 0) {
-                break;
-            }
-
+            const windowFreq = new Map<string, number>();
             let matches = 0;
-            let targetIdx = 0;
-            let endTokenIdx = i;
-
-            // Slide the right edge forward, allowing gaps (insertions) in the source code.
-            for (let j = i; j < sourceTokens.length && targetIdx < targetTokens.length; j++) {
-                if (sourceTokens[j].text === targetTokens[targetIdx]) {
-                    matches++;
-                    targetIdx++;
-                    endTokenIdx = j;
+            
+            for (let j = i; j < sourceTokens.length && j < i + maxWindowSize; j++) {
+                const tokenText = sourceTokens[j].text;
+                const targetCount = targetFreq.get(tokenText) || 0;
+                
+                if (targetCount > 0) {
+                    const currentCount = windowFreq.get(tokenText) || 0;
+                    if (currentCount < targetCount) {
+                        windowFreq.set(tokenText, currentCount + 1);
+                        matches++;
+                    }
                 }
-            }
 
-            // Guardrail: require at least 30 % of target tokens to match before
-            // accepting a window, preventing low-signal false positives.
-            const matchRatio = matches / targetTokens.length;
-            if (matches > 0 && matchRatio > 0.3) {
-                const startToken = sourceTokens[i];
-                const endToken = sourceTokens[endTokenIdx];
-                const charLength = (endToken.offset + endToken.text.length) - startToken.offset;
+                const matchRatio = matches / targetTokens.length;
+                if (matchRatio > 0.3) {
+                    const startToken = sourceTokens[i];
+                    const endToken = sourceTokens[j];
+                    const charLength = (endToken.offset + endToken.text.length) - startToken.offset;
 
-                // Tie-breaking: Smallest Window Size (Highest token density)
-                if (matches > maxMatches || (matches === maxMatches && charLength < minWindowLength)) {
-                    maxMatches = matches;
-                    minWindowLength = charLength;
-                    bestWindow = [
-                        elasticStart + startToken.offset,
-                        elasticStart + endToken.offset + endToken.text.length
-                    ];
+                    // Tie-breaking: Smallest Window Size (Highest token density)
+                    if (matches > maxMatches || (matches === maxMatches && charLength < minWindowLength)) {
+                        maxMatches = matches;
+                        minWindowLength = charLength;
+                        bestWindow = [
+                            elasticStart + startToken.offset,
+                            elasticStart + endToken.offset + endToken.text.length
+                        ];
+                    }
+                }
+                
+                if (matches === targetTokens.length) {
+                    break;
                 }
             }
         }
@@ -1316,6 +1330,21 @@ export class TraceManager implements vscode.Disposable {
 
     private escapeRegExp(string: string): string {
         return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s*');
+    }
+
+    private findLongestCommonSubstring(line: string, searchArea: string, minLength: number = 5): string {
+        if (searchArea.includes(line)) return line;
+        
+        // Extract the longest consecutive match that still meets minLength requirement
+        for (let len = line.length - 1; len >= minLength; len--) {
+            for (let i = 0; i <= line.length - len; i++) {
+                const sub = line.substr(i, len);
+                if (searchArea.includes(sub)) {
+                    return sub;
+                }
+            }
+        }
+        return '';
     }
 
     private contentMatches(docContent: string, storedContent: string): boolean {
