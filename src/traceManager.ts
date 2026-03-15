@@ -315,7 +315,7 @@ export class TraceManager implements vscode.Disposable {
             const originalHighlight = trace.highlight;
             const originalLineRange = trace.lineRange ? [...trace.lineRange] : null;
 
-            await this.validateAndRecover(trace, true);
+            await this.validateAndRecover(trace, true, token);
 
             if (token.isCancellationRequested) {
                 return;
@@ -868,7 +868,7 @@ export class TraceManager implements vscode.Disposable {
         }
     }
 
-    private processValidationQueue(token: vscode.CancellationToken): void {
+    private async processValidationQueue(token: vscode.CancellationToken): Promise<void> {
         if (token.isCancellationRequested) return;
 
         // End condition: Cleanup Token Source cleanly
@@ -935,12 +935,22 @@ export class TraceManager implements vscode.Disposable {
                     const currentContent = document.getText(new vscode.Range(startPos, endPos));
 
                     if (!this.contentMatches(currentContent, trace.content)) {
-                        const recovered = this.recoverTracePoints(document, trace.content, startOffset);
+                        const recovered = await this.recoverTracePoints(document, trace.content, startOffset, document.uri, token);
                         if (recovered) {
-                            trace.rangeOffset = recovered;
-                            const rStart = document.positionAt(recovered[0]);
-                            const rEnd = document.positionAt(recovered[1]);
-                            trace.lineRange = [rStart.line, rEnd.line];
+                            trace.rangeOffset = recovered.offset;
+                            if (recovered.uri.fsPath !== document.uri.fsPath) {
+                                trace.filePath = recovered.uri.fsPath;
+                                const targetDoc = await this.getDocAdapter(recovered.uri, false);
+                                if (targetDoc.docAdapter) {
+                                    const rStart = targetDoc.docAdapter.positionAt(recovered.offset[0]);
+                                    const rEnd = targetDoc.docAdapter.positionAt(recovered.offset[1]);
+                                    trace.lineRange = [rStart.line, rEnd.line];
+                                }
+                            } else {
+                                const rStart = document.positionAt(recovered.offset[0]);
+                                const rEnd = document.positionAt(recovered.offset[1]);
+                                trace.lineRange = [rStart.line, rEnd.line];
+                            }
                             if (trace.orphaned) {
                                 trace.orphaned = false;
                             }
@@ -1001,16 +1011,19 @@ export class TraceManager implements vscode.Disposable {
     }
 
     /**
-     * 3-Tier Optimized Recovery Logic
+     * 4-Tier Optimized Recovery Logic
      * Tier 1: Exact Match (Radius Bound)
      * Tier 2: Regex Anchor Match with Proximity Preference (Radius Bound)
      * Tier 3: Token-based Sliding Window (Elastic Radius Bound)
+     * Tier 4: Workspace-wide fallback for identical file extensions (Cross-file)
      */
-    private recoverTracePoints(
+    private async recoverTracePoints(
         document: ITraceDocument,
         storedContent: string,
-        lastKnownStart: number
-    ): [number, number] | null {
+        lastKnownStart: number,
+        originalUri: vscode.Uri,
+        token?: vscode.CancellationToken
+    ): Promise<{ offset: [number, number], uri: vscode.Uri } | null> {
         const fullText = document.getText();
         const cleanContent = storedContent.trim();
         const radius = TraceManager.SEARCH_RADIUS;
@@ -1026,7 +1039,7 @@ export class TraceManager implements vscode.Disposable {
         const localIdx = searchArea.indexOf(cleanContent);
         if (localIdx >= 0) {
             const start = searchStart + localIdx;
-            return [start, start + cleanContent.length];
+            return { offset: [start, start + cleanContent.length], uri: originalUri };
         }
 
         // ==========================================
@@ -1066,7 +1079,7 @@ export class TraceManager implements vscode.Disposable {
             }
 
             if (bestPair) {
-                return bestPair;
+                return { offset: bestPair, uri: originalUri };
             }
         }
 
@@ -1079,7 +1092,144 @@ export class TraceManager implements vscode.Disposable {
         const elasticEnd = Math.min(fullText.length, lastKnownStart + elasticRadius + cleanContent.length);
         const elasticArea = fullText.slice(elasticStart, elasticEnd);
 
-        return this.slidingWindowTokenSearch(elasticArea, elasticStart, cleanContent);
+        const tier3Offset = this.slidingWindowTokenSearch(elasticArea, elasticStart, cleanContent);
+        
+        if (tier3Offset) {
+            // FIX: Use the expanded bounding validation instead of strict string equality
+            const validatedOffset = this.validateAndExpandTokenBounds(fullText, tier3Offset, cleanContent);
+            if (validatedOffset) {
+                return { offset: validatedOffset, uri: originalUri };
+            } else {
+                console.warn('Tier 3 found a token match, but boundary validation failed. Moving to Tier 4.');
+            }
+        }
+
+        // ==========================================
+        // TIER 4: Cross-File Workspace Search
+        // ==========================================
+        return await this.searchAcrossWorkspace(originalUri, cleanContent, token);
+    }
+
+    /**
+     * Tier 4 Helper: Searches all files in the workspace with the same extension.
+     */
+    private async searchAcrossWorkspace(
+        originalUri: vscode.Uri, 
+        cleanContent: string,
+        token?: vscode.CancellationToken
+    ): Promise<{ offset: [number, number], uri: vscode.Uri } | null> {
+        
+        const fsPath = originalUri.fsPath;
+        const extIndex = fsPath.lastIndexOf('.');
+        let searchPattern = '';
+
+        if (extIndex === -1) {
+            const fileName = fsPath.substring(fsPath.lastIndexOf('/') + 1).replace(/\\/g, '/');
+            searchPattern = `**/${fileName}`;
+        } else {
+            const ext = fsPath.substring(extIndex); 
+            searchPattern = `**/*${ext}`;
+        }
+        
+        const uris = await vscode.workspace.findFiles(searchPattern, null);
+        const batchSize = 10;
+
+        for (let i = 0; i < uris.length; i += batchSize) {
+            if (token?.isCancellationRequested) return null;
+
+            const batch = uris.slice(i, i + batchSize);
+            
+            const results = await Promise.all(batch.map(async (uri) => {
+                if (uri.fsPath === originalUri.fsPath) return null;
+
+                try {
+                    const bytes = await vscode.workspace.fs.readFile(uri);
+                    const text = this.decodeFileContent(uri, bytes); 
+                    
+                    // FIX 1: Run Tier 1 (Exact Match) First! 
+                    // If the user simply moved the file, this catches it instantly.
+                    const exactIdx = text.indexOf(cleanContent);
+                    if (exactIdx >= 0) {
+                        return { offset: [exactIdx, exactIdx + cleanContent.length] as [number, number], uri };
+                    }
+
+                    // Run Tier 3 (Sliding Window Fallback)
+                    const offset = this.slidingWindowTokenSearch(text, 0, cleanContent);
+                    if (offset) {
+                        // FIX 2: Validate by expanding the search area to account for 
+                        // stripped punctuation and comments at the boundaries.
+                        const expandedOffset = this.validateAndExpandTokenBounds(text, offset, cleanContent);
+                        if (expandedOffset) {
+                            return { offset: expandedOffset, uri };
+                        }
+                    }
+                } catch (err) {
+                    console.error(`Tier 4: Failed to read ${uri.fsPath}`, err);
+                }
+                return null;
+            }));
+
+            const found = results.find(result => result !== null);
+            if (found) {
+                return found;
+            }
+
+            await new Promise(resolve => setTimeout(resolve, 0));
+        }
+
+        return null; // Totally orphaned
+    }
+
+    /**
+     * Helper to validate fuzzy token bounds.
+     * Expands the token window outwards to see if the exact clean content 
+     * sits neatly over the area, accounting for stripped boundary punctuation.
+     */
+    private validateAndExpandTokenBounds(
+        fullText: string, 
+        tokenBounds: [number, number], 
+        cleanContent: string
+    ): [number, number] | null {
+        // Expand the validation window by the length of the clean content to ensure
+        // we capture leading/trailing comments or brackets that the lexer stripped.
+        const buffer = cleanContent.length; 
+        const start = Math.max(0, tokenBounds[0] - buffer);
+        const end = Math.min(fullText.length, tokenBounds[1] + buffer);
+        
+        const localArea = fullText.substring(start, end);
+
+        let cleanIdx = 0;
+        let startMatch = -1;
+        
+        for (let i = 0; i < localArea.length; i++) {
+            if (/[ \t\r\n\f\v]/.test(localArea[i])) continue;
+            
+            while (cleanIdx < cleanContent.length && /[ \t\r\n\f\v]/.test(cleanContent[cleanIdx])) {
+                cleanIdx++;
+            }
+            
+            if (cleanIdx < cleanContent.length && localArea[i] === cleanContent[cleanIdx]) {
+                if (startMatch === -1) startMatch = i;
+                cleanIdx++;
+                
+                while (cleanIdx < cleanContent.length && /[ \t\r\n\f\v]/.test(cleanContent[cleanIdx])) {
+                    cleanIdx++;
+                }
+
+                if (cleanIdx === cleanContent.length) {
+                    const exactStart = start + startMatch;
+                    return [exactStart, start + i + 1];
+                }
+            } else {
+                if (startMatch !== -1) {
+                    i = startMatch; 
+                    startMatch = -1;
+                    cleanIdx = 0;
+                }
+            }
+        }
+
+        return null; 
     }
 
     /**
@@ -1353,47 +1503,45 @@ export class TraceManager implements vscode.Disposable {
     }
 
 
-    private async validateAndRecover(trace: TracePoint, background: boolean = false): Promise<TracePoint | null> {
+    private decodeFileContent(uri: vscode.Uri, bytes: Uint8Array): string {
+        const config = vscode.workspace.getConfiguration('files', uri);
+        let encoding = config.get<string>('encoding', 'utf8');
+        if (encoding === 'utf8bom') {
+            encoding = 'utf-8';
+        }
         try {
-            if (!trace.filePath) {
-                // It's an empty trace/note, so it inherently doesn't have a file. It is not orphaned.
-                trace.orphaned = false;
-                return trace;
-            }
+            return new TextDecoder(encoding).decode(bytes);
+        } catch {
+            return new TextDecoder('utf-8').decode(bytes);
+        }
+    }
 
-            try {
-                await vscode.workspace.fs.stat(vscode.Uri.file(trace.filePath));
-            } catch {
-                console.warn('Trace validation skipped missing file:', trace.filePath);
-                trace.orphaned = true;
-                if (!trace.rangeOffset) { trace.rangeOffset = [0, 0]; }
-                return trace;
-            }
-
-
-            const uri = vscode.Uri.file(trace.filePath);
-            let docAdapter: ITraceDocument | undefined = vscode.workspace.textDocuments.find(d => d.uri.toString() === uri.toString());
-            let newlyOpened = false;
-            
-            if (!docAdapter) {
-                if (!background) {
+    private async getDocAdapter(uri: vscode.Uri, background: boolean): Promise<{ docAdapter: ITraceDocument | undefined, newlyOpened: boolean }> {
+        let docAdapter: ITraceDocument | undefined = vscode.workspace.textDocuments.find(d => d.uri.toString() === uri.toString());
+        let newlyOpened = false;
+        
+        if (!docAdapter) {
+            if (!background) {
+                try {
                     docAdapter = await vscode.workspace.openTextDocument(uri);
                     newlyOpened = true;
-                } else {
+                } catch (e) {
+                    return { docAdapter: undefined, newlyOpened };
+                }
+            } else {
+                try {
                     const bytes = await vscode.workspace.fs.readFile(uri);
                     
-                    const config = vscode.workspace.getConfiguration('files', uri);
-                    let encoding = config.get<string>('encoding', 'utf8');
-                    if (encoding === 'utf8bom') {
-                        encoding = 'utf-8';
-                    }
-
                     let fullText: string = "";
                     try {
-                        fullText = new TextDecoder(encoding).decode(bytes);
+                        fullText = this.decodeFileContent(uri, bytes);
                     } catch (e) {
-                        docAdapter = await vscode.workspace.openTextDocument(uri);
-                        newlyOpened = true;
+                        try {
+                            docAdapter = await vscode.workspace.openTextDocument(uri);
+                            newlyOpened = true;
+                        } catch (e) {
+                            return { docAdapter: undefined, newlyOpened };
+                        }
                     }
 
                     if (!docAdapter) {
@@ -1429,15 +1577,50 @@ export class TraceManager implements vscode.Disposable {
                                 if (end > start && fullText[end - 1] === '\r') end--;
                                 return { range: { end: new vscode.Position(line, end - start) } };
                             },
-                            getText: (range?: vscode.Range) => {
+                            getText: function(range?: vscode.Range) {
                                 if (!range) return fullText;
-                                const start = docAdapter!.offsetAt(range.start);
-                                const end = docAdapter!.offsetAt(range.end);
+                                const start = this.offsetAt(range.start);
+                                const end = this.offsetAt(range.end);
                                 return fullText.substring(start, end);
                             }
                         };
                     }
+                } catch (e) {
+                    return { docAdapter: undefined, newlyOpened };
                 }
+            }
+        }
+        
+        return { docAdapter, newlyOpened };
+    }
+
+    private async validateAndRecover(trace: TracePoint, background: boolean = false, token?: vscode.CancellationToken): Promise<TracePoint | null> {
+        try {
+            if (!trace.filePath) {
+                // It's an empty trace/note, so it inherently doesn't have a file. It is not orphaned.
+                trace.orphaned = false;
+                return trace;
+            }
+
+            try {
+                await vscode.workspace.fs.stat(vscode.Uri.file(trace.filePath));
+            } catch {
+                console.warn('Trace validation skipped missing file:', trace.filePath);
+                trace.orphaned = true;
+                if (!trace.rangeOffset) { trace.rangeOffset = [0, 0]; }
+                return trace;
+            }
+
+
+            const uri = vscode.Uri.file(trace.filePath);
+            const res = await this.getDocAdapter(uri, background);
+            const docAdapter = res.docAdapter;
+            const newlyOpened = res.newlyOpened;
+            
+            if (!docAdapter) {
+                trace.orphaned = true;
+                if (!trace.rangeOffset) { trace.rangeOffset = [0, 0]; }
+                return trace;
             }
 
             if (newlyOpened) {
@@ -1466,11 +1649,28 @@ export class TraceManager implements vscode.Disposable {
                 estimatedOffset = docAdapter.offsetAt(new vscode.Position(trace.lineRange[0], 0));
             }
 
-            const recovered = this.recoverTracePoints(docAdapter, trace.content, estimatedOffset);
-            if (recovered) {
-                trace.rangeOffset = recovered;
-                const rStart = docAdapter.positionAt(recovered[0]);
-                const rEnd = docAdapter.positionAt(recovered[1]);
+            const recoveredResult = await this.recoverTracePoints(docAdapter, trace.content, estimatedOffset, uri, token);
+            if (recoveredResult) {
+                const { offset: recoveredOffset, uri: newUri } = recoveredResult;
+                
+                if (newUri.fsPath !== uri.fsPath) {
+                    trace.filePath = newUri.fsPath;
+                    console.log(`Trace point migrated to new file: ${newUri.fsPath}`);
+                }
+
+                trace.rangeOffset = recoveredOffset;
+                
+                let targetDocAdapter = docAdapter;
+                if (newUri.fsPath !== uri.fsPath) {
+                    const res = await this.getDocAdapter(newUri, background);
+                    if (res.docAdapter) {
+                        targetDocAdapter = res.docAdapter;
+                    }
+                }
+
+                const rStart = targetDocAdapter.positionAt(recoveredOffset[0]);
+                const rEnd = targetDocAdapter.positionAt(recoveredOffset[1]);
+                
                 trace.lineRange = [rStart.line, rEnd.line];
                 trace.orphaned = false;
                 return trace;
