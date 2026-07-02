@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { TrashIcon, SearchIcon } from './icons';
 import { TracePoint, TraceTree } from '../../types';
-import { FloatCard } from './FloatCanvas';
+import { FloatCard, flattenTraces } from './FloatCanvas';
 import { parseQuery, matchTrace, collectHighlightTargets } from '../utils/search';
 
 interface TreeItem {
@@ -21,24 +21,6 @@ interface TreeListProps {
     allTreeData: TraceTree[] | null;
     onNavigateToTrace: (treeId: string, groupId: string | null, focusId: string) => void;
     onRequestAllTrees: () => void;
-}
-
-function flattenTraces(traces: TracePoint[]): { trace: TracePoint; parentId: string | null }[] {
-    const result: { trace: TracePoint; parentId: string | null }[] = [];
-    const stack: { trace: TracePoint; parentId: string | null }[] = [];
-    for (let i = traces.length - 1; i >= 0; i--) {
-        stack.push({ trace: traces[i], parentId: null });
-    }
-    while (stack.length > 0) {
-        const { trace, parentId } = stack.pop()!;
-        result.push({ trace, parentId });
-        if (trace.children?.length) {
-            for (let i = trace.children.length - 1; i >= 0; i--) {
-                stack.push({ trace: trace.children[i], parentId: trace.id });
-            }
-        }
-    }
-    return result;
 }
 
 export const TreeList: React.FC<TreeListProps> = ({

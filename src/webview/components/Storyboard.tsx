@@ -8,7 +8,6 @@ import {
     useSensors,
     DragStartEvent,
     DragEndEvent,
-    Modifier,
     DragOverlay,
     useDroppable,
     useDndContext,
@@ -40,12 +39,6 @@ const customCollisionDetection = (args: Parameters<typeof pointerWithin>[0]) => 
     return closestCorners(args);
 };
 
-const restrictToVerticalAxis: Modifier = ({ transform }) => {
-    return {
-        ...transform,
-        x: 0,
-    };
-};
 import {
     arrayMove,
     SortableContext,

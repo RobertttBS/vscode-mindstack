@@ -113,22 +113,15 @@ const FloatTree: React.FC<FloatTreeProps> = React.memo(({ traces, parentId, onNa
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
 
-function flattenTraces(traces: TracePoint[]): { trace: TracePoint; parentId: string | null }[] {
-    const result: { trace: TracePoint; parentId: string | null }[] = [];
-    // Reverse root array so first root ends up on top of the stack (pre-order DFS)
-    const stack: { trace: TracePoint; parentId: string | null }[] =
-        [...traces].reverse().map(t => ({ trace: t, parentId: null }));
-    while (stack.length > 0) {
-        const item = stack.pop()!;
-        result.push(item);
-        if (item.trace.children && item.trace.children.length > 0) {
-            // Push children in reverse so first child is processed first
-            for (let i = item.trace.children.length - 1; i >= 0; i--) {
-                stack.push({ trace: item.trace.children[i], parentId: item.trace.id });
-            }
-        }
-    }
-    return result;
+/** Depth-first pre-order flatten; recursion is safe since MAX_DEPTH caps the tree. */
+export function flattenTraces(
+    traces: TracePoint[],
+    parentId: string | null = null,
+): { trace: TracePoint; parentId: string | null }[] {
+    return traces.flatMap(trace => [
+        { trace, parentId },
+        ...flattenTraces(trace.children ?? [], trace.id),
+    ]);
 }
 
 export function highlightMatches(text: string, targets: string[]): React.ReactNode {

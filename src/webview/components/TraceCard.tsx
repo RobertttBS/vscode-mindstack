@@ -16,7 +16,7 @@ import json from 'refractor/json';
 import bash from 'refractor/bash';
 import css from 'refractor/css';
 import markdown from 'refractor/markdown';
-import type { TracePoint } from '../../types';
+import type { TracePoint, HighlightColor } from '../../types';
 
 SyntaxHighlighter.registerLanguage('tsx', tsx);
 SyntaxHighlighter.registerLanguage('typescript', typescript);
@@ -63,6 +63,9 @@ const HighlightedCode = React.memo<{
     </SyntaxHighlighter>
 ));
 HighlightedCode.displayName = 'HighlightedCode';
+
+/** Context-menu display order for the highlight colours. */
+const HIGHLIGHT_COLORS: HighlightColor[] = ['red', 'blue', 'green', 'orange', 'purple', 'indigo', 'brown', 'yellow'];
 
 /** Map common VS Code languageIds to Prism language names */
 function mapLanguage(lang: string): string {
@@ -211,7 +214,7 @@ const TraceCard: React.FC<TraceCardProps> = ({ trace, index, autoFocusNote, onCa
         return () => window.removeEventListener('click', closeMenu);
     }, [menuPos]);
 
-    const updateHighlight = useCallback((color: 'red' | 'blue' | 'green' | 'orange' | 'purple' | 'indigo' | 'brown' | 'yellow' | null) => {
+    const updateHighlight = useCallback((color: HighlightColor | null) => {
         postMessage({
             command: 'updateHighlight',
             id: trace.id,
@@ -362,14 +365,14 @@ const TraceCard: React.FC<TraceCardProps> = ({ trace, index, autoFocusNote, onCa
                     style={{ top: menuPos.y, left: menuPos.x }}
                     onClick={(e) => e.stopPropagation()} // Prevent closing when clicking inside
                 >
-                    <div className="color-option red" onClick={() => updateHighlight('red')} title="Red Highlight" />
-                    <div className="color-option blue" onClick={() => updateHighlight('blue')} title="Blue Highlight" />
-                    <div className="color-option green" onClick={() => updateHighlight('green')} title="Green Highlight" />
-                    <div className="color-option orange" onClick={() => updateHighlight('orange')} title="Orange Highlight" />
-                    <div className="color-option purple" onClick={() => updateHighlight('purple')} title="Purple Highlight" />
-                    <div className="color-option indigo" onClick={() => updateHighlight('indigo')} title="Indigo Highlight" />
-                    <div className="color-option brown" onClick={() => updateHighlight('brown')} title="Brown Highlight" />
-                    <div className="color-option yellow" onClick={() => updateHighlight('yellow')} title="Yellow Highlight" />
+                    {HIGHLIGHT_COLORS.map(color => (
+                        <div
+                            key={color}
+                            className={`color-option ${color}`}
+                            onClick={() => updateHighlight(color)}
+                            title={`${color[0].toUpperCase()}${color.slice(1)} Highlight`}
+                        />
+                    ))}
                     <div className="color-option none" onClick={() => updateHighlight(null)} title="Clear Highlight" />
                 </div>
             )}

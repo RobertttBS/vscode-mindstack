@@ -7,16 +7,19 @@ export interface NavigationHistoryEntry {
 }
 
 
+/** The single source of truth for available highlight colours. */
+export type HighlightColor = 'red' | 'blue' | 'green' | 'orange' | 'purple' | 'indigo' | 'brown' | 'yellow';
+
 export interface TracePoint {
     id: string;
     filePath: string;
     rangeOffset: [number, number]; // [startOffset, endOffset] (absolute)
-    lineRange?: [number, number]; 
+    lineRange?: [number, number];
     content: string;             // dedented source code
     lang: string;                // language id for syntax highlighting
     note: string;
     timestamp: number;
-    highlight?: 'red' | 'blue' | 'green' | 'orange' | 'purple' | 'indigo' | 'brown' | 'yellow' | null;
+    highlight?: HighlightColor | null;
     orphaned?: boolean;
     children?: TracePoint[];     // sub-traces (max 10 levels deep)
 }
@@ -54,7 +57,7 @@ export function unescapeNoteFence(line: string): string {
 }
 
 /** Maps a highlight colour to its human-readable Markdown tag (and vice-versa). */
-export const HIGHLIGHT_TO_TAG: Record<NonNullable<TracePoint['highlight']>, string> = {
+export const HIGHLIGHT_TO_TAG: Record<HighlightColor, string> = {
     red:    'Important',
     orange: 'Faq',
     blue:   'Note',
@@ -102,7 +105,7 @@ export type WebviewToExtensionMessage =
     | { command: 'ready' }
     | { command: 'enterGroup'; id: string }
     | { command: 'exitGroup' }
-    | { command: 'updateHighlight'; id: string; highlight: 'red' | 'blue' | 'green' | 'orange' | 'purple' | 'indigo' | 'brown' | 'yellow' | null }
+    | { command: 'updateHighlight'; id: string; highlight: HighlightColor | null }
     | { command: 'exportToMarkdown' }
     | { command: 'renameTree'; name: string }
     | { command: 'createTree'; name: string }

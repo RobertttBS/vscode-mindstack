@@ -1,6 +1,5 @@
 import * as vscode from 'vscode';
-import * as path from 'path';
-import { TracePoint } from './types';
+import { TracePoint, HighlightColor } from './types';
 
 function isOverlapping(t1: TracePoint, t2: TracePoint): boolean {
     if (t1.rangeOffset && t2.rangeOffset)
@@ -10,18 +9,22 @@ function isOverlapping(t1: TracePoint, t2: TracePoint): boolean {
     return false;
 }
 
-let traceDecorationType: vscode.TextEditorDecorationType;
-let fadedDecorationType: vscode.TextEditorDecorationType;
-export let flashDecorationType: vscode.TextEditorDecorationType;
+/** Gutter-icon / line-tint styling per highlight color (plus the uncolored default). */
+const HIGHLIGHT_STYLES: Record<'default' | HighlightColor, { icon: string; background: string }> = {
+    default: { icon: '#AAAAAA', background: 'rgba(200, 200, 200, 0.05)' },
+    red:     { icon: '#F14C4C', background: 'rgba(241, 76, 76, 0.05)' },
+    blue:    { icon: '#3794FF', background: 'rgba(55, 148, 255, 0.05)' },
+    green:   { icon: '#3AD900', background: 'rgba(58, 217, 0, 0.05)' },
+    orange:  { icon: '#FF8800', background: 'rgba(255, 136, 0, 0.05)' },
+    purple:  { icon: '#9D00FF', background: 'rgba(157, 0, 255, 0.05)' },
+    indigo:  { icon: '#818CF8', background: 'rgba(129, 140, 248, 0.05)' },
+    brown:   { icon: '#C8864A', background: 'rgba(200, 134, 74, 0.05)' },
+    yellow:  { icon: '#FFCC00', background: 'rgba(255, 204, 0, 0.05)' },
+};
 
-let redDecorationType: vscode.TextEditorDecorationType;
-let blueDecorationType: vscode.TextEditorDecorationType;
-let greenDecorationType: vscode.TextEditorDecorationType;
-let orangeDecorationType: vscode.TextEditorDecorationType;
-let purpleDecorationType: vscode.TextEditorDecorationType;
-let indigoDecorationType: vscode.TextEditorDecorationType;
-let brownDecorationType: vscode.TextEditorDecorationType;
-let yellowDecorationType: vscode.TextEditorDecorationType;
+let highlightDecorationTypes: Map<'default' | HighlightColor, vscode.TextEditorDecorationType> | undefined;
+let fadedDecorationType: vscode.TextEditorDecorationType;
+let flashDecorationType: vscode.TextEditorDecorationType;
 
 /** Generate a data URI for the gutter icon with the specified color */
 function getGutterIconUri(color: string): vscode.Uri {
@@ -31,12 +34,23 @@ function getGutterIconUri(color: string): vscode.Uri {
 
 /** Create the shared decoration types (call once at activation) */
 export function initDecorations(context: vscode.ExtensionContext): void {
-    traceDecorationType = vscode.window.createTextEditorDecorationType({
-        gutterIconPath: getGutterIconUri('#AAAAAA'), // light grey
-        gutterIconSize: 'contain',
-        isWholeLine: true,
-        backgroundColor: 'rgba(200, 200, 200, 0.05)', // subtle grey tint
-    });
+    highlightDecorationTypes = new Map();
+    const createHighlightType = (key: 'default' | HighlightColor) => {
+        const style = HIGHLIGHT_STYLES[key];
+        const type = vscode.window.createTextEditorDecorationType({
+            gutterIconPath: getGutterIconUri(style.icon),
+            gutterIconSize: 'contain',
+            isWholeLine: true,
+            backgroundColor: style.background,
+        });
+        highlightDecorationTypes!.set(key, type);
+        context.subscriptions.push(type);
+    };
+
+    // Creation order matters: VS Code derives gutter z-order from the order of
+    // createTextEditorDecorationType calls. Keep the long-standing sequence
+    // default → faded → flash → colors.
+    createHighlightType('default');
 
     fadedDecorationType = vscode.window.createTextEditorDecorationType({
         gutterIconPath: getGutterIconUri('#52525266'), // dark grey
@@ -50,74 +64,49 @@ export function initDecorations(context: vscode.ExtensionContext): void {
         isWholeLine: true,
     });
 
-    // Colored highlights
-    redDecorationType = vscode.window.createTextEditorDecorationType({
-        gutterIconPath: getGutterIconUri('#F14C4C'),
-        gutterIconSize: 'contain',
-        isWholeLine: true,
-        backgroundColor: 'rgba(241, 76, 76, 0.05)',
-    });
-
-    blueDecorationType = vscode.window.createTextEditorDecorationType({
-        gutterIconPath: getGutterIconUri('#3794FF'),
-        gutterIconSize: 'contain',
-        isWholeLine: true,
-        backgroundColor: 'rgba(55, 148, 255, 0.05)',
-    });
-
-    greenDecorationType = vscode.window.createTextEditorDecorationType({
-        gutterIconPath: getGutterIconUri('#3AD900'),
-        gutterIconSize: 'contain',
-        isWholeLine: true,
-        backgroundColor: 'rgba(58, 217, 0, 0.05)',
-    });
-
-    orangeDecorationType = vscode.window.createTextEditorDecorationType({
-        gutterIconPath: getGutterIconUri('#FF8800'),
-        gutterIconSize: 'contain',
-        isWholeLine: true,
-        backgroundColor: 'rgba(255, 136, 0, 0.05)',
-    });
-
-    purpleDecorationType = vscode.window.createTextEditorDecorationType({
-        gutterIconPath: getGutterIconUri('#9D00FF'),
-        gutterIconSize: 'contain',
-        isWholeLine: true,
-        backgroundColor: 'rgba(157, 0, 255, 0.05)',
-    });
-
-    indigoDecorationType = vscode.window.createTextEditorDecorationType({
-        gutterIconPath: getGutterIconUri('#818CF8'),
-        gutterIconSize: 'contain',
-        isWholeLine: true,
-        backgroundColor: 'rgba(129, 140, 248, 0.05)',
-    });
-
-    brownDecorationType = vscode.window.createTextEditorDecorationType({
-        gutterIconPath: getGutterIconUri('#C8864A'),
-        gutterIconSize: 'contain',
-        isWholeLine: true,
-        backgroundColor: 'rgba(200, 134, 74, 0.05)',
-    });
-
-    yellowDecorationType = vscode.window.createTextEditorDecorationType({
-        gutterIconPath: getGutterIconUri('#FFCC00'),
-        gutterIconSize: 'contain',
-        isWholeLine: true,
-        backgroundColor: 'rgba(255, 204, 0, 0.05)',
-    });
-
-    context.subscriptions.push(traceDecorationType);
     context.subscriptions.push(fadedDecorationType);
     context.subscriptions.push(flashDecorationType);
-    context.subscriptions.push(redDecorationType);
-    context.subscriptions.push(blueDecorationType);
-    context.subscriptions.push(greenDecorationType);
-    context.subscriptions.push(orangeDecorationType);
-    context.subscriptions.push(purpleDecorationType);
-    context.subscriptions.push(indigoDecorationType);
-    context.subscriptions.push(brownDecorationType);
-    context.subscriptions.push(yellowDecorationType);
+
+    for (const key of Object.keys(HIGHLIGHT_STYLES) as ('default' | HighlightColor)[]) {
+        if (key !== 'default') { createHighlightType(key); }
+    }
+}
+
+let flashTimer: ReturnType<typeof setTimeout> | undefined;
+
+/**
+ * Jump to a file/line range, select it, and briefly flash highlight.
+ */
+export async function handleJump(message: { filePath: string; range: [number, number] }): Promise<void> {
+    try {
+        const doc = await vscode.workspace.openTextDocument(message.filePath);
+        const editor = await vscode.window.showTextDocument(doc, {
+            viewColumn: vscode.ViewColumn.One,
+            preview: false,
+        });
+
+        const endLine = message.range[1];
+        const lineContent = doc.lineAt(endLine);
+        const range = new vscode.Range(message.range[0], 0, endLine, lineContent.text.length);
+
+        // Scroll to center
+        editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
+
+        // Set selection
+        editor.selection = new vscode.Selection(range.start, range.end);
+
+        // Flash effect (500ms) — reuse singleton decoration type
+        if (flashTimer) { clearTimeout(flashTimer); }
+        editor.setDecorations(flashDecorationType, [range]);
+        flashTimer = setTimeout(() => {
+            editor.setDecorations(flashDecorationType, []);
+            flashTimer = undefined;
+        }, 500);
+    } catch {
+        vscode.window.showErrorMessage(
+            `TraceNotes: Could not open file "${message.filePath}". It may have been moved or deleted.`
+        );
+    }
 }
 
 /**
@@ -129,7 +118,7 @@ export function updateDecorations(
     activeTraces: TracePoint[],
     allTraces: TracePoint[],
 ): void {
-    if (!traceDecorationType || !fadedDecorationType) { return; }
+    if (!highlightDecorationTypes || !fadedDecorationType) { return; }
 
     const currentFilePath = editor.document.uri.fsPath;
 
@@ -310,16 +299,8 @@ export function updateDecorations(
     // was called at activation time — that order is not configurable after the fact.
     // Gutter conflicts are avoided spatially above: active lines are carved out of faded
     // ranges so no two decoration types ever compete for the same gutter slot.
-    const get = (key: TracePoint['highlight'] | 'default') => makeOptions(byColor.get(key) ?? []);
-
-    editor.setDecorations(traceDecorationType,  get('default'));
-    editor.setDecorations(redDecorationType,    get('red'));
-    editor.setDecorations(blueDecorationType,   get('blue'));
-    editor.setDecorations(greenDecorationType,  get('green'));
-    editor.setDecorations(orangeDecorationType, get('orange'));
-    editor.setDecorations(purpleDecorationType, get('purple'));
-    editor.setDecorations(indigoDecorationType, get('indigo'));
-    editor.setDecorations(brownDecorationType,  get('brown'));
-    editor.setDecorations(yellowDecorationType, get('yellow'));
-    editor.setDecorations(fadedDecorationType,  fadedDecorations);
+    for (const [key, type] of highlightDecorationTypes) {
+        editor.setDecorations(type, makeOptions(byColor.get(key) ?? []));
+    }
+    editor.setDecorations(fadedDecorationType, fadedDecorations);
 }

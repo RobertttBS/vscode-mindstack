@@ -1,7 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { TracePoint, TraceTree, MAX_DEPTH, HIGHLIGHT_TO_TAG, NOTE_BLOCK_START, NOTE_BLOCK_END, unescapeNoteFence } from './types';
-import { generateIsomorphicUUID } from './utils/uuid';
+import { TracePoint, TraceTree, MAX_DEPTH, HIGHLIGHT_TO_TAG, HighlightColor, NOTE_BLOCK_START, NOTE_BLOCK_END, unescapeNoteFence } from './types';
 import { FileStorageManager } from './storage/FileStorageManager';
 
 // Module-level regex constants — compiled once instead of per call on hot paths.
@@ -663,7 +662,7 @@ export class TraceManager implements vscode.Disposable {
         }
     }
 
-    public updateHighlight(id: string, highlight: 'red' | 'blue' | 'green' | 'orange' | 'purple' | 'indigo' | 'brown' | 'yellow' | null): void {
+    public updateHighlight(id: string, highlight: HighlightColor | null): void {
         const trace = this.findTraceById(id);
         if (trace) {
             trace.highlight = highlight;
@@ -674,7 +673,7 @@ export class TraceManager implements vscode.Disposable {
 
     public addEmptyTrace(): string {
         const newTrace: TracePoint = {
-            id: generateIsomorphicUUID(),
+            id: crypto.randomUUID(),
             filePath: '',
             rangeOffset: [0, 0],
             lineRange: [0, 0],
@@ -776,7 +775,7 @@ export class TraceManager implements vscode.Disposable {
         let firstImportedId: string | null = null;
         for (const tree of incoming) {
             if (existingIds.has(tree.id)) {
-                const newId = generateIsomorphicUUID();
+                const newId = crypto.randomUUID();
                 this.trees.push({ ...tree, id: newId });
                 existingIds.add(newId);
                 firstImportedId ??= newId;
@@ -814,19 +813,8 @@ export class TraceManager implements vscode.Disposable {
     }
 
     public getAllFlat(list: TracePoint[] = this.getActiveRootTraces()): TracePoint[] {
-        const result: TracePoint[] = [];
-        const stack = [...list].reverse(); // Push reversed roots to map correctly
-
-        while (stack.length > 0) {
-            const current = stack.pop()!; // O(1) extract from back
-            result.push(current);
-
-            if (current.children?.length) {
-                // Reverse children before pushing to preserve depth-first stack order
-                stack.push(...[...current.children].reverse());
-            }
-        }
-        return result;
+        // Depth-first pre-order; recursion is safe since MAX_DEPTH caps the tree.
+        return list.flatMap(t => [t, ...this.getAllFlat(t.children ?? [])]);
     }
 
     public clear(): void {
@@ -2047,7 +2035,7 @@ export class TraceManager implements vscode.Disposable {
                 const highlight = (tag && TAG_TO_HIGHLIGHT[tag]) ? TAG_TO_HIGHLIGHT[tag] : null;
 
                 currentTrace = {
-                    id: generateIsomorphicUUID(),
+                    id: crypto.randomUUID(),
                     note: title,
                     highlight,
                     orphaned: false,

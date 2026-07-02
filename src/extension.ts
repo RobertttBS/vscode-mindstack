@@ -5,9 +5,8 @@ import { TraceManager } from './traceManager';
 import { EditorTracker } from './utils/EditorTracker';
 import { StoryboardProvider } from './webviewProvider';
 import { collectTrace } from './collector';
-import { handleJump } from './decoration';
 import { generateMarkdown } from './exporter';
-import { initDecorations, updateDecorations } from './decorationManager';
+import { initDecorations, updateDecorations, handleJump } from './decorationManager';
 
 // Module-level reference so `deactivate` can flush pending saves.
 let _traceManagerRef: TraceManager | undefined;
