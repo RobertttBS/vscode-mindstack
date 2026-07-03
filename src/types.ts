@@ -100,6 +100,7 @@ export type ExtensionToWebviewMessage =
 export type WebviewToExtensionMessage =
     | { command: 'jumpToCode'; id: string; filePath: string; range: [number, number] }
     | { command: 'removeTrace'; id: string }
+    | { command: 'undoRemoveTrace' }
     | { command: 'reorderTraces'; orderedIds: string[] }
     | { command: 'updateNote'; id: string; note: string }
     | { command: 'ready' }

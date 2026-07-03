@@ -74,6 +74,9 @@ export function activate(context: vscode.ExtensionContext) {
                 case 'removeTrace':
                     traceManager.remove(msg.id);
                     break;
+                case 'undoRemoveTrace':
+                    traceManager.undoRemove();
+                    break;
                 case 'reorderTraces':
                     traceManager.reorder(msg.orderedIds);
                     break;

@@ -115,6 +115,16 @@ export class TraceManager implements vscode.Disposable {
     // Dirty flag: true when in-memory state has not yet been flushed to disk
     private isDirty: boolean = false;
 
+    // Deleted-card history for webview Ctrl+Z / Cmd+Z (most recent last).
+    // In-memory only: undo history does not survive a window reload.
+    private static readonly REMOVE_UNDO_LIMIT = 50;
+    private removeUndoStack: {
+        treeId: string;
+        parentId: string | null;
+        index: number;
+        trace: TracePoint;
+    }[] = [];
+
     private _onDidChangeTraces = new vscode.EventEmitter<{ focusId?: string } | void>();
     public readonly onDidChangeTraces = this._onDidChangeTraces.event;
 
@@ -627,16 +637,82 @@ export class TraceManager implements vscode.Disposable {
     }
 
     public remove(id: string): void {
-        this.removeFromTree(id);
+        // Snapshot the card's location before mutating so undoRemove can put it
+        // back exactly where it was (same tree, same parent, same position).
+        const trace = this.findTraceById(id);
+        const parentId = this.parentIdMap.get(id) ?? null;
+        const index = this.findParentList(id)?.findIndex(t => t.id === id) ?? -1;
 
+        const removed = this.removeFromTree(id);
+
+        if (removed && trace && this.activeTreeId) {
+            this.removeUndoStack.push({ treeId: this.activeTreeId, parentId, index, trace });
+            if (this.removeUndoStack.length > TraceManager.REMOVE_UNDO_LIMIT) {
+                this.removeUndoStack.shift();
+            }
+        }
+
+        this.removeTraceFromIndex(id);
+
+        // Must run after removeTraceFromIndex: findTraceById reads traceIdMap, so
+        // checking earlier would still see the removed group and never reset.
         if (this.activeGroupId && !this.findTraceById(this.activeGroupId)) {
             this.activeGroupId = null;
             this.persistActiveGroup();
         }
 
-        this.removeTraceFromIndex(id);
         this.persist();
         this._onDidChangeTraces.fire();
+    }
+
+    /**
+     * Restores the most recently removed card (webview Ctrl+Z / Cmd+Z).
+     * Entries that can no longer be restored — their tree was deleted, or the
+     * id already lives in the tree again (e.g. re-imported) — are discarded and
+     * the next entry is tried. Returns the restored trace's id, or null when
+     * there is nothing left to undo.
+     */
+    public undoRemove(): string | null {
+        while (this.removeUndoStack.length > 0) {
+            const entry = this.removeUndoStack.pop()!;
+            const tree = this.trees.find(t => t.id === entry.treeId);
+            if (!tree || this.getAllFlat(tree.traces).some(t => t.id === entry.trace.id)) { continue; }
+
+            // Resolve the original parent by walking the tree itself — the id maps
+            // only cover the active tree. If the parent is gone too (deleted and
+            // not yet undone), degrade to restoring at the tree root rather than
+            // dropping the card.
+            let parentId = entry.parentId;
+            let targetList = tree.traces;
+            if (parentId !== null) {
+                const parent = this.getAllFlat(tree.traces).find(t => t.id === parentId);
+                if (parent) {
+                    if (!parent.children) { parent.children = []; }
+                    targetList = parent.children;
+                } else {
+                    parentId = null;
+                }
+            }
+            targetList.splice(Math.min(entry.index, targetList.length), 0, entry.trace);
+
+            // Navigate to where the card reappears so the undo is visible.
+            if (this.activeTreeId !== entry.treeId) {
+                this.activeTreeId = entry.treeId;
+                this.persistActiveTree();
+                this.rebuildTraceIndex();
+            } else {
+                this.addTraceToIndex(entry.trace, parentId);
+            }
+            if (this.activeGroupId !== parentId) {
+                this.activeGroupId = parentId;
+                this.persistActiveGroup();
+            }
+
+            this.persist();
+            this._onDidChangeTraces.fire({ focusId: entry.trace.id });
+            return entry.trace.id;
+        }
+        return null;
     }
 
     public reorder(orderedIds: string[]): void {
