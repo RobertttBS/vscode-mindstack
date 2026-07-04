@@ -30,7 +30,7 @@ Single vitest file: `npx vitest run <path>`. `src/recoverTracePoints.test.ts` is
 
 Always mutate traces through TraceManager methods (`add`, `remove`, `reorder`, `relocateTrace`, `enterGroup`/`exitGroup`, `moveToChild`/`moveToParent`) so indexes and persistence stay in sync.
 
-**Decorations (`src/decorationManager.ts`).** Fixed pool of `TextEditorDecorationType` (one per highlight color + faded + flash). Repaints on active-editor change, document edits (100 ms debounce), and trace-change events (50 ms — wins on burst). `MAX_DEPTH = 10`.
+**Decorations (`src/decorationManager.ts`).** Fixed pool of `TextEditorDecorationType` (one per highlight color + faded + flash). Repaints on active-editor change, document edits (100 ms debounce), and trace-change events (50 ms — wins on burst).
 
 **Webview.** React 18 + `@dnd-kit`. Components in `src/webview/components/`, hooks in `src/webview/hooks/`. Strict CSP with per-load nonce from `crypto.randomBytes` (`getNonce()` in `webviewProvider.ts`); only `dist/` in `localResourceRoots`.
 
@@ -42,6 +42,7 @@ Always mutate traces through TraceManager methods (`add`, `remove`, `reorder`, `
 - `rangeOffset: [number, number]` (absolute offsets) is authoritative; `lineRange` is a legacy/UI projection.
 - Bundles are minified — debug with source maps.
 - `.vscodeignore` ships `dist/` only (excludes `src/`, `*.ts`, `*.tsx`).
+- `MAX_DEPTH = 10` (`types.ts`) caps group nesting; enforced in TraceManager (`moveToChild`/`enterGroup`), also read by the webview.
 
 ## When uncertain
 
