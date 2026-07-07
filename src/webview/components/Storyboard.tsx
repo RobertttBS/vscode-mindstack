@@ -397,6 +397,21 @@ const Storyboard: React.FC = () => {
         postMessage({ command: 'ready' });
     }, []);
 
+    // Ctrl+Z / Cmd+Z restores the most recently removed card. Text fields keep
+    // their native undo: the extension only handles the shortcut outside them.
+    useEffect(() => {
+        const onKeyDown = (e: KeyboardEvent) => {
+            if ((e.key === 'z' || e.key === 'Z') && (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) {
+                const target = e.target as HTMLElement | null;
+                if (target?.closest('input, textarea, [contenteditable="true"]')) { return; }
+                e.preventDefault();
+                postMessage({ command: 'undoRemoveTrace' });
+            }
+        };
+        window.addEventListener('keydown', onKeyDown);
+        return () => window.removeEventListener('keydown', onKeyDown);
+    }, []);
+
     // Scroll to a newly created card
     useEffect(() => {
         if (!pendingFocusId) { return; }
