@@ -684,16 +684,20 @@ export class TraceManager implements vscode.Disposable {
             // dropping the card.
             let parentId = entry.parentId;
             let targetList = tree.traces;
+            let index = entry.index;
             if (parentId !== null) {
                 const parent = this.getAllFlat(tree.traces).find(t => t.id === parentId);
                 if (parent) {
                     if (!parent.children) { parent.children = []; }
                     targetList = parent.children;
                 } else {
+                    // Parent gone (deleted, not yet undone): entry.index was relative
+                    // to that parent and is meaningless at root — append instead.
                     parentId = null;
+                    index = targetList.length;
                 }
             }
-            targetList.splice(Math.min(entry.index, targetList.length), 0, entry.trace);
+            targetList.splice(Math.min(index, targetList.length), 0, entry.trace);
 
             // Navigate to where the card reappears so the undo is visible.
             if (this.activeTreeId !== entry.treeId) {
