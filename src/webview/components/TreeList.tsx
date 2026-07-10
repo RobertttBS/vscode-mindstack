@@ -55,6 +55,7 @@ export const TreeList: React.FC<TreeListProps> = ({
     }, [newName, onCreate]);
 
     const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+        if (e.nativeEvent.isComposing) { return; } // IME confirm, not a real Enter/Escape
         if (e.key === 'Enter') {
             handleCreate();
         } else if (e.key === 'Escape') {

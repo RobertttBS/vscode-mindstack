@@ -645,6 +645,7 @@ const Storyboard: React.FC = () => {
     }, [titleInputValue, treeName]);
 
     const handleTitleKeyDown = useCallback((e: React.KeyboardEvent) => {
+        if (e.nativeEvent.isComposing) { return; } // IME confirm, not a real Enter/Escape
         if (e.key === 'Enter') {
             saveTitle();
         } else if (e.key === 'Escape') {

@@ -152,6 +152,10 @@ const TraceCard: React.FC<TraceCardProps> = ({ trace, index, autoFocusNote, onCa
     }, [trace.id, onUpdateNote]);
 
     const handleNoteKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+        // Ignore keys fired while an IME is composing (e.g. the Enter that
+        // confirms Chinese input on macOS) so they don't save/indent/newline.
+        if (e.nativeEvent.isComposing) { return; }
+
         const textarea = e.currentTarget;
 
         // Commit a programmatic edit and remember where the caret should land.
@@ -164,13 +168,11 @@ const TraceCard: React.FC<TraceCardProps> = ({ trace, index, autoFocusNote, onCa
 
         // Typing a wrap character (`*`, `` ` ``, brackets, ...) over a non-empty
         // selection wraps it instead of replacing it, like Obsidian. Inner text
-        // stays selected, so pressing again stacks (e.g. `*`×2 → `**…**`). Skip
-        // while an IME is composing so Chinese/Japanese input isn't disturbed.
+        // stays selected, so pressing again stacks (e.g. `*`×2 → `**…**`).
         const wrapClose = WRAP_PAIRS[e.key];
         if (
             wrapClose &&
             !e.ctrlKey && !e.metaKey && !e.altKey &&
-            !e.nativeEvent.isComposing &&
             textarea.selectionStart !== textarea.selectionEnd
         ) {
             applyEdit(wrapSelection(textarea.value, textarea.selectionStart, textarea.selectionEnd, e.key, wrapClose));
