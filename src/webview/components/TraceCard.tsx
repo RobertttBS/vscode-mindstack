@@ -5,7 +5,7 @@ import { vscDarkPlus, prism } from 'react-syntax-highlighter/dist/esm/styles/pri
 import { useVSCodeTheme } from '../hooks/useVSCodeTheme';
 import MarkdownNote from './MarkdownNote';
 import { handleListEnter, handleListIndent, type EditResult } from '../utils/listEditing';
-import { toggleBold, wrapSelection, WRAP_PAIRS } from '../utils/inlineFormatting';
+import { toggleBold, wrapSelection, autoPair, autoPairBackspace, WRAP_PAIRS } from '../utils/inlineFormatting';
 
 // Register only the languages we actually need (instead of bundling all ~300)
 import tsx from 'refractor/tsx';
@@ -155,6 +155,12 @@ const TraceCard: React.FC<TraceCardProps> = ({ trace, index, autoFocusNote, onCa
         const applyEdit = (result: EditResult | null) => {
             if (!result) { return; }
             e.preventDefault();
+            if (result.value === textarea.value) {
+                // Text unchanged (e.g. skip-over): React won't re-render, so
+                // move the caret directly instead of via pendingSelectionRef.
+                textarea.setSelectionRange(result.selectionStart, result.selectionEnd);
+                return;
+            }
             pendingSelectionRef.current = { start: result.selectionStart, end: result.selectionEnd };
             setNoteValue(result.value);
         };
@@ -172,6 +178,24 @@ const TraceCard: React.FC<TraceCardProps> = ({ trace, index, autoFocusNote, onCa
         ) {
             applyEdit(wrapSelection(textarea.value, textarea.selectionStart, textarea.selectionEnd, e.key, wrapClose));
             return;
+        }
+
+        // With no selection, typing an opening character auto-inserts its
+        // closing partner (caret in between), typing a closing character
+        // already at the caret skips over it, and Backspace between an empty
+        // pair removes both — mirroring Obsidian's auto-pair.
+        if (
+            !e.ctrlKey && !e.metaKey && !e.altKey &&
+            !e.nativeEvent.isComposing &&
+            textarea.selectionStart === textarea.selectionEnd
+        ) {
+            const result = e.key === 'Backspace'
+                ? autoPairBackspace(textarea.value, textarea.selectionStart)
+                : autoPair(textarea.value, textarea.selectionStart, e.key);
+            if (result) {
+                applyEdit(result);
+                return;
+            }
         }
 
         // Ctrl+Enter or Meta+Enter (Cmd+Enter) to save

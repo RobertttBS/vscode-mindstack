@@ -67,3 +67,70 @@ export function wrapSelection(value: string, start: number, end: number, open: s
     const newValue = value.slice(0, start) + open + selected + close + value.slice(end);
     return { value: newValue, selectionStart: start + open.length, selectionEnd: end + open.length };
 }
+
+/** Symmetric markdown markers: the same character opens and closes a span. */
+const SYMMETRIC_MARKERS = new Set(['*', '_', '`', '~']);
+
+/** Closing characters that always skip over an identical char at the caret. */
+const SKIP_OVER = new Set([')', ']', '}', '"', "'"]);
+
+/**
+ * Keys that should NOT auto-pair right after a word character, so apostrophes
+ * (don't), snake_case and `a*b` stay untouched. Brackets are exempt: `foo(`
+ * should still pair.
+ */
+const NO_PAIR_AFTER_WORD = new Set(['*', '_', '`', '~', '"', "'"]);
+
+/**
+ * Auto-pairing only fires when the caret sits before one of these characters
+ * (or whitespace / end of text) — mirroring VS Code's `autoCloseBefore`, so
+ * typing `(` directly in front of a word inserts a lone `(` instead of
+ * wrapping nothing.
+ */
+const CLOSE_BEFORE = ')]}`*_~"\'.,;:!?，。；：！？、）】」』';
+
+const WORD_CHAR = /[A-Za-z0-9_]/;
+
+/**
+ * Auto-pair for an empty selection, mirroring Obsidian/VS Code:
+ *
+ * - Typing an opening character inserts the matching closing character and
+ *   places the caret between them (`(` → `(|)`).
+ * - Typing a closing bracket/quote that is already at the caret skips over it
+ *   instead of inserting a duplicate (`(foo|)` + `)` → `(foo)|`).
+ * - Symmetric markers skip only when they end a word (`*foo|*` + `*` →
+ *   `*foo*|`); between an empty pair they stack (`*|*` + `*` → `**|**`), so
+ *   double-tapping `*` still builds bold.
+ *
+ * Returns `null` when the key should fall through to the textarea's default.
+ */
+export function autoPair(value: string, pos: number, key: string): EditResult | null {
+    const next = value[pos];
+    const prev = value[pos - 1];
+    const afterWord = prev !== undefined && WORD_CHAR.test(prev);
+
+    if (next === key && (SKIP_OVER.has(key) || (SYMMETRIC_MARKERS.has(key) && afterWord))) {
+        return { value, selectionStart: pos + 1, selectionEnd: pos + 1 };
+    }
+
+    const close = WRAP_PAIRS[key];
+    if (!close) { return null; }
+    if (next !== undefined && !/\s/.test(next) && !CLOSE_BEFORE.includes(next)) { return null; }
+    if (afterWord && NO_PAIR_AFTER_WORD.has(key)) { return null; }
+
+    const newValue = value.slice(0, pos) + key + close + value.slice(pos);
+    return { value: newValue, selectionStart: pos + 1, selectionEnd: pos + 1 };
+}
+
+/**
+ * Backspace between an empty pair removes both characters (`(|)` → empty),
+ * completing the auto-pair round trip. Returns `null` when the characters
+ * around the caret aren't a matching pair.
+ */
+export function autoPairBackspace(value: string, pos: number): EditResult | null {
+    const prev = value[pos - 1];
+    const close = prev !== undefined ? WRAP_PAIRS[prev] : undefined;
+    if (close === undefined || value[pos] !== close) { return null; }
+    const newValue = value.slice(0, pos - 1) + value.slice(pos + 1);
+    return { value: newValue, selectionStart: pos - 1, selectionEnd: pos - 1 };
+}
